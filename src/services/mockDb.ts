@@ -1,7 +1,9 @@
 
+import type { 
+  Dress, Booking, FinanceRecord, AuditLog, Customer, User, Delivery, SaleOrder
+} from '../types';
 import { 
-  Dress, Booking, FinanceRecord, AuditLog, Customer, User, Delivery, SaleOrder,
-  DressType, DressStatus, BookingStatus, UserRole, SaleStatus, FactoryPaymentStatus, DepositType, PaymentMethod
+  DressType, DressStatus, BookingStatus, UserRole, SaleStatus, FactoryPaymentStatus, PaymentMethod
 } from '../types';
 
 // Helper to generate random ID
@@ -49,7 +51,7 @@ const generateSeedData = () => {
   dresses.push({ id: 'DR-004', name: 'فستان الزفاف الكلاسيكي', style: 'Classic', type: DressType.RENT, factoryPrice: 4500, rentalPrice: 1300, status: DressStatus.CLEANING, image: '', notes: 'يحتاج تنظيف مستعجل', purchaseDate: daysFromNow(-120), createdAt: daysFromNow(-120), rentalCount: 12 });
 
   // --- 4. Bookings & Deliveries ---
-  const bookingPast = {
+  const bookingPast: Booking = {
       id: 'BK-001', customerId: 'CUST-0', customerName: customerNames[0], customerPhone: '0501111111',
       dressId: 'DR-001', dressName: 'فستان سندريلا الملكي',
       eventDate: daysFromNow(-10), bookingDate: daysFromNow(-20),
@@ -60,7 +62,7 @@ const generateSeedData = () => {
   bookings.push(bookingPast);
   finance.push({ id: 'INC-001', date: daysFromNow(-20), type: 'INCOME', category: 'عربون حجز', amount: 500, notes: 'عربون BK-001' });
 
-  const bookingActive = {
+  const bookingActive: Booking = {
       id: 'BK-002', customerId: 'CUST-1', customerName: customerNames[1], customerPhone: '0502222222',
       dressId: 'DR-003', dressName: 'فستان السهرة الذهبي',
       eventDate: daysFromNow(0),
@@ -71,7 +73,7 @@ const generateSeedData = () => {
   };
   bookings.push(bookingActive);
 
-  const bookingFuture = {
+  const bookingFuture: Booking = {
       id: 'BK-003', customerId: 'CUST-2', customerName: customerNames[2], customerPhone: '0503333333',
       dressId: 'DR-002', dressName: 'فستان الدانتيل الأبيض',
       eventDate: daysFromNow(5),

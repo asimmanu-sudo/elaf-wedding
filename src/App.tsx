@@ -2,19 +2,24 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Home, Shirt, Calendar, Truck, Users, DollarSign, FileText, Settings, LogOut, Plus, 
-  Search, Edit, Trash2, Check, X, Printer, RefreshCw, Droplets, User, Factory, 
-  RotateCcw, CheckSquare, AlertCircle, ChevronLeft, TrendingUp, TrendingDown, Bell, ShoppingBag,
-  Shield, Gift, AlertTriangle, Lock, UserPlus, Database, PieChart as PieChartIcon, Undo2, BarChart3, ArrowUpRight, ArrowDownRight,
-  Scissors, FileCheck, Cloud, Loader2, Tag
+  Search, Edit, Trash2, Check, X, Printer, Droplets, User, Factory, 
+  RotateCcw, AlertCircle, TrendingUp, Bell, ShoppingBag,
+  Gift, AlertTriangle, Lock, 
+  Scissors, FileCheck, Cloud, Loader2, Tag, Sparkles, PieChart as PieChartIcon
 } from 'lucide-react';
 import { 
-  BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid, Legend, PieChart, Pie, Cell, ComposedChart, Line
+  BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid, Legend, PieChart, Pie, Cell
 } from 'recharts';
+import { GoogleGenAI } from "@google/genai";
 import { cloudDb, isConfigured } from './services/firebase';
 import { 
-    User as UserType, UserRole, Dress, DressType, DressStatus, Booking, BookingStatus, 
-    FinanceRecord, AuditLog, Delivery, DepositType, Customer, SaleOrder, 
-    SaleStatus, FactoryPaymentStatus, Measurements, MeasurementUnit, PaymentMethod, Accessory
+    UserRole, DressType, DressStatus, BookingStatus, 
+    SaleStatus, FactoryPaymentStatus, PaymentMethod
+} from './types';
+import type { 
+    User as UserType, Dress, Booking, 
+    FinanceRecord, AuditLog, Customer, SaleOrder, 
+    Accessory
 } from './types';
 import { NAV_ITEMS, PERMISSIONS_LIST } from './constants';
 
@@ -38,6 +43,21 @@ const toInputDate = (iso: string | undefined) => {
     try { return new Date(iso).toISOString().split('T')[0]; } catch { return ''; } 
 };
 const formatCurrency = (val: number | undefined) => new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP', maximumFractionDigits: 0 }).format(val || 0);
+
+// --- AI Service ---
+const generateDressDescription = async (dressName: string, style: string) => {
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `أنت خبير مبيعات وتسويق لفساتين الزفاف الراقية. اكتب وصفاً تسويقياً جذاباً وشاعرياً باللغة العربية لفستان زفاف اسمه "${dressName}" وتصميمه من نوع "${style}". الوصف يجب أن يكون قصيراً (حوالي 30 كلمة) ويجذب العرائس في "إيلاف لفساتين الزفاف".`,
+        });
+        return response.text?.trim() || "وصف جميل لفستان زفاف فاخر.";
+    } catch (error) {
+        console.error("AI Generation Error:", error);
+        return "حدث خطأ أثناء توليد الوصف. يرجى المحاولة لاحقاً.";
+    }
+};
 
 // --- Components ---
 const ToastContext = React.createContext<{ addToast: (msg: string, type?: 'success'|'error'|'info') => void }>({ addToast: () => {} });
@@ -155,14 +175,15 @@ const DetailedFinanceCharts = ({ finance, dresses, bookings }: { finance: Financ
                     </div>
                 </div>
                 <div className={CARD_CLASS}>
+                    {/* Fixed missing PieChartIcon by importing from lucide-react */}
                     <h3 className="text-slate-200 font-bold mb-4 flex items-center gap-2"><PieChartIcon size={20} className="text-purple-500"/> تحليل المصروفات</h3>
                     <div className="h-64 w-full text-xs flex items-center justify-center">
-                        <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={expenseData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">{(expenseData as any[]).map((entry, index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}</Pie><RechartsTooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} /><Legend /></PieChart></ResponsiveContainer>
+                        <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={expenseData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">{expenseData.map((_, index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}</Pie><RechartsTooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} /><Legend /></PieChart></ResponsiveContainer>
                     </div>
                 </div>
             </div>
             <div className={CARD_CLASS}>
-                 <h3 className="text-slate-200 font-bold mb-4 flex items-center gap-2"><BarChart3 size={20} className="text-brand-500"/> ربحية الفساتين</h3>
+                 <h3 className="text-slate-200 font-bold mb-4 flex items-center gap-2"><FileText size={20} className="text-brand-500"/> ربحية الفساتين</h3>
                  <div className="h-64 w-full text-xs mb-6">
                         <ResponsiveContainer width="100%" height="100%"><BarChart data={profitData.slice(0, 10)} layout="vertical" margin={{ left: 20 }}><CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} /><XAxis type="number" stroke="#94a3b8" /><YAxis dataKey="name" type="category" stroke="#94a3b8" width={100} /><RechartsTooltip contentStyle={{backgroundColor: '#1e293b', border: 'none'}} cursor={{fill: '#334155', opacity: 0.2}} /><Bar dataKey="profit" name="صافي الربح" fill="#d946ef" radius={[0, 4, 4, 0]} barSize={20} /></BarChart></ResponsiveContainer>
                  </div>
@@ -355,6 +376,22 @@ const App = () => {
         const [editing, setEditing] = useState<Dress|null>(null);
         const [search, setSearch] = useState('');
         const [view, setView] = useState<'CURRENT'|'ARCHIVED'|'ANALYTICS'>('CURRENT');
+        const [isAiLoading, setIsAiLoading] = useState(false);
+
+        const handleAiDescription = async () => {
+            const nameEl = document.getElementById('dress_name') as HTMLInputElement;
+            const styleEl = document.getElementById('dress_style') as HTMLInputElement;
+            const name = nameEl?.value;
+            const style = styleEl?.value;
+            if(!name) { addToast("يرجى كتابة اسم الفستان أولاً لتمكين الذكاء الاصطناعي", "info"); return; }
+            setIsAiLoading(true);
+            const desc = await generateDressDescription(name, style || "");
+            const noteEl = document.getElementById('dress_notes') as HTMLTextAreaElement;
+            if(noteEl) noteEl.value = desc;
+            setIsAiLoading(false);
+            addToast("تم توليد الوصف بنجاح ✨", "success");
+        };
+
         const filteredDresses = dresses.filter(d => d.type === DressType.RENT && (view === 'ARCHIVED' ? d.status === DressStatus.ARCHIVED : d.status !== DressStatus.ARCHIVED) && (d.name.includes(search) || d.style.includes(search)));
         const analyticsData = useMemo(() => {
             return dresses.filter(d => d.type === DressType.RENT).map(d => {
@@ -401,7 +438,7 @@ const App = () => {
                 ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">{filteredDresses.map(d => (<div key={d.id} className={CARD_CLASS}><div className="flex justify-between items-start mb-2"><h4 className="font-bold text-lg">{d.name}</h4><span className={`text-[10px] px-2 py-0.5 rounded border ${d.status===DressStatus.AVAILABLE?'border-green-500 text-green-500':d.status===DressStatus.RENTED?'border-blue-500 text-blue-500':'border-red-500 text-red-500'}`}>{d.status}</span></div><p className="text-sm text-slate-400 mb-2">{d.style}</p><div className="flex gap-2 mt-4 pt-3 border-t border-slate-700">{hasPerm('dresses_rent_add') && <button onClick={()=>{setEditing(d); setShowModal(true)}} className="flex-1 bg-slate-700 hover:bg-slate-600 py-2 rounded text-sm text-white">تعديل</button>}{hasPerm('dresses_rent_delete') && <button onClick={()=>confirmAction('أرشفة','هل تريد أرشفة الفستان؟',async()=>{await cloudDb.update(cloudDb.COLLS.DRESSES,d.id,{status:DressStatus.ARCHIVED}); addToast('تمت الأرشفة')})} className="px-3 bg-red-900/20 text-red-400 rounded"><Trash2 size={16}/></button>}</div></div>))}</div>
                 )}
-                {showModal && <Modal title={editing ? 'تعديل' : 'جديد'} onClose={()=>{setShowModal(false); setEditing(null)}}><form onSubmit={handleSave} className="space-y-4"><input name="name" defaultValue={editing?.name} placeholder="اسم الفستان" className={INPUT_CLASS} required /><input name="style" defaultValue={editing?.style} placeholder="الموديل" className={INPUT_CLASS} /><div className="grid grid-cols-2 gap-4"><input name="factoryPrice" type="number" defaultValue={editing?.factoryPrice} placeholder="سعر الشراء" className={INPUT_CLASS} /><input name="rentalPrice" type="number" defaultValue={editing?.rentalPrice} placeholder="سعر الإيجار" className={INPUT_CLASS} /></div><textarea name="notes" defaultValue={editing?.notes} placeholder="ملاحظات" className={INPUT_CLASS} /><button className={BTN_PRIMARY}>حفظ</button></form></Modal>}
+                {showModal && <Modal title={editing ? 'تعديل' : 'جديد'} onClose={()=>{setShowModal(false); setEditing(null)}}><form onSubmit={handleSave} className="space-y-4"><input id="dress_name" name="name" defaultValue={editing?.name} placeholder="اسم الفستان" className={INPUT_CLASS} required /><input id="dress_style" name="style" defaultValue={editing?.style} placeholder="الموديل" className={INPUT_CLASS} /><div className="grid grid-cols-2 gap-4"><input name="factoryPrice" type="number" defaultValue={editing?.factoryPrice} placeholder="سعر الشراء" className={INPUT_CLASS} /><input name="rentalPrice" type="number" defaultValue={editing?.rentalPrice} placeholder="سعر الإيجار" className={INPUT_CLASS} /></div><div className="relative"><textarea id="dress_notes" name="notes" defaultValue={editing?.notes} placeholder="ملاحظات أو وصف تسويقي" className={`${INPUT_CLASS} min-h-[100px]`} /><button type="button" onClick={handleAiDescription} disabled={isAiLoading} className="absolute left-2 bottom-2 bg-brand-600/20 hover:bg-brand-600 text-brand-400 hover:text-white px-2 py-1 rounded text-[10px] flex items-center gap-1 border border-brand-600/30 transition-all">{isAiLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {isAiLoading ? 'جاري التوليد...' : 'توليد وصف ذكي'}</button></div><button className={BTN_PRIMARY}>حفظ</button></form></Modal>}
             </div>
         );
     };
@@ -458,6 +495,19 @@ const App = () => {
         const [deliveryModal, setDeliveryModal] = useState<{show: boolean, order: SaleOrder|null}>({show: false, order: null});
         const [editing, setEditing] = useState<SaleOrder|null>(null);
         const [saleTab, setSaleTab] = useState<'DESIGN'|'DELIVERED'>('DESIGN');
+        const [isAiLoading, setIsAiLoading] = useState(false);
+
+        const handleAiDescription = async () => {
+            const descInput = document.getElementById('sale_desc') as HTMLInputElement;
+            const currentDesc = descInput?.value;
+            if(!currentDesc) { addToast("يرجى كتابة وصف بسيط للفستان أولاً لتمكين الذكاء الاصطناعي", "info"); return; }
+            setIsAiLoading(true);
+            const richDesc = await generateDressDescription(currentDesc, "تفصيل حسب الطلب");
+            if(descInput) descInput.value = richDesc;
+            setIsAiLoading(false);
+            addToast("تم توليد وصف إبداعي ✨", "success");
+        };
+
         const handleSave = async (e: any) => {
             e.preventDefault(); const f = e.target;
             const newItem: any = {
@@ -493,7 +543,7 @@ const App = () => {
             <div className="space-y-4 animate-fade-in">
                  <div className="flex flex-col md:flex-row justify-between gap-4"><div className="flex gap-2 bg-slate-800 p-1 rounded-lg w-fit"><button onClick={()=>setSaleTab('DESIGN')} className={`px-4 py-2 rounded-md font-bold text-xs ${saleTab==='DESIGN' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>تحت التنفيذ</button><button onClick={()=>setSaleTab('DELIVERED')} className={`px-4 py-2 rounded-md font-bold text-xs ${saleTab==='DELIVERED' ? 'bg-brand-600 text-white' : 'text-slate-400'}`}>تم التسليم</button></div>{hasPerm('dresses_sale_add') && <button onClick={()=>{setEditing(null); setShowModal(true)}} className="bg-brand-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"><Plus size={18}/> أمر تفصيل</button>}</div>
                 <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden"><table className="w-full text-right text-sm"><thead><tr><th className={TABLE_HEAD_CLASS}>الكود</th><th className={TABLE_HEAD_CLASS}>العروس</th><th className={TABLE_HEAD_CLASS}>الموعد</th><th className={TABLE_HEAD_CLASS}>المتبقي</th><th className={TABLE_HEAD_CLASS}>إجراءات</th></tr></thead><tbody>{(saleTab==='DESIGN' ? designingOrders : deliveredOrders).map(s => (<tr key={s.id} className={TABLE_ROW_CLASS}><td className="p-4 font-mono">{s.factoryCode}</td><td className="p-4 font-bold">{s.brideName}</td><td className="p-4">{formatDate(s.expectedDeliveryDate)}</td><td className="p-4 text-red-400 font-bold">{formatCurrency(s.remainingFromBride)}</td><td className="p-4 flex gap-1">{saleTab==='DESIGN' && hasPerm('dresses_sale_deliver') && <button onClick={()=>setDeliveryModal({show: true, order: s})} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-bold shadow-lg">تم التسليم</button>}<button onClick={()=>{setShowMeasures({show: true, order: s})}} className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-brand-300" title="المقاسات"><Scissors size={16}/></button>{hasPerm('dresses_sale_add') && <button onClick={()=>{setEditing(s); setShowModal(true)}} className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-300"><Edit size={16}/></button>}<button onClick={()=>setPrintData({data: s, type: 'SALE'})} className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-300"><Printer size={16}/></button><button onClick={()=>setPrintData({data: s, type: 'ORDER_DETAILS'})} className="p-1.5 bg-brand-900/50 hover:bg-brand-900 rounded text-brand-300" title="طباعة للخياط"><FileCheck size={16}/></button></td></tr>))}</tbody></table></div>
-                {showModal && <Modal title="طلب تفصيل" onClose={()=>{setShowModal(false); setEditing(null)}} size="lg"><form onSubmit={handleSave} className="space-y-4"><div className="grid grid-cols-2 gap-4"><input name="factoryCode" defaultValue={editing?.factoryCode} placeholder="كود المصنع" className={INPUT_CLASS}/><input name="date" type="date" defaultValue={toInputDate(editing?.expectedDeliveryDate)} className={INPUT_CLASS}/></div><div className="grid grid-cols-2 gap-4"><input name="brideName" defaultValue={editing?.brideName} placeholder="اسم العروس" className={INPUT_CLASS}/><input name="bridePhone" defaultValue={editing?.bridePhone} placeholder="الهاتف" className={INPUT_CLASS}/></div><input name="desc" defaultValue={editing?.dressDescription} placeholder="وصف الفستان" className={INPUT_CLASS}/><div className="grid grid-cols-3 gap-3"><input name="factoryPrice" type="number" defaultValue={editing?.factoryPrice} placeholder="سعر المصنع" className={INPUT_CLASS}/><input name="sellPrice" type="number" defaultValue={editing?.sellPrice} placeholder="سعر البيع" className={INPUT_CLASS}/><input name="deposit" type="number" defaultValue={editing?.deposit} placeholder="العربون" className={INPUT_CLASS}/></div><button className={BTN_PRIMARY}>حفظ</button></form></Modal>}
+                {showModal && <Modal title="طلب تفصيل" onClose={()=>{setShowModal(false); setEditing(null)}} size="lg"><form onSubmit={handleSave} className="space-y-4"><div className="grid grid-cols-2 gap-4"><input name="factoryCode" defaultValue={editing?.factoryCode} placeholder="كود المصنع" className={INPUT_CLASS}/><input name="date" type="date" defaultValue={toInputDate(editing?.expectedDeliveryDate)} className={INPUT_CLASS}/></div><div className="grid grid-cols-2 gap-4"><input name="brideName" defaultValue={editing?.brideName} placeholder="اسم العروس" className={INPUT_CLASS}/><input name="bridePhone" defaultValue={editing?.bridePhone} placeholder="الهاتف" className={INPUT_CLASS}/></div><div className="relative"><input id="sale_desc" name="desc" defaultValue={editing?.dressDescription} placeholder="وصف الفستان" className={INPUT_CLASS}/><button type="button" onClick={handleAiDescription} disabled={isAiLoading} className="absolute left-2 top-1.5 bg-brand-600/20 hover:bg-brand-600 text-brand-400 hover:text-white px-2 py-1 rounded text-[10px] flex items-center gap-1 border border-brand-600/30 transition-all">{isAiLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {isAiLoading ? 'جاري التوليد...' : 'ذكاء اصطناعي'}</button></div><div className="grid grid-cols-3 gap-3"><input name="factoryPrice" type="number" defaultValue={editing?.factoryPrice} placeholder="سعر المصنع" className={INPUT_CLASS}/><input name="sellPrice" type="number" defaultValue={editing?.sellPrice} placeholder="سعر البيع" className={INPUT_CLASS}/><input name="deposit" type="number" defaultValue={editing?.deposit} placeholder="العربون" className={INPUT_CLASS}/></div><button className={BTN_PRIMARY}>حفظ</button></form></Modal>}
                 {showMeasures.show && <Modal title="المقاسات والتصميم" onClose={()=>setShowMeasures({show: false, order: null})} size="lg"><form onSubmit={handleSaveMeasures} className="space-y-6"><div className="grid grid-cols-4 gap-3">{['neck','shoulder','chest','underChest','chestDart','waist','backLength','hips','fullLength','sleeve','armhole','arm','forearm','wrist','legOpening'].map(k => (<MeasureInput key={k} label={k} name={`meas_${k}`} def={(showMeasures.order?.measurements as any)?.[k]} />))}</div><div className="grid grid-cols-2 gap-4"><MeasureInput label="نوع الصدر" name="bustType" def={showMeasures.order?.measurements?.bustType}/><MeasureInput label="نوع التنورة" name="skirtType" def={showMeasures.order?.measurements?.skirtType}/></div><div><label className={LABEL_CLASS}>الخامات المستخدمة</label><textarea name="materials" defaultValue={showMeasures.order?.measurements?.materials} className={INPUT_CLASS} rows={2}></textarea></div><div><label className={LABEL_CLASS}>ملاحظات التصميم</label><textarea name="orderNotes" defaultValue={showMeasures.order?.measurements?.orderNotes} className={INPUT_CLASS} rows={3}></textarea></div><button className={BTN_PRIMARY}>حفظ</button></form></Modal>}
                 {deliveryModal.show && <Modal title="تسليم للعروس" onClose={()=>setDeliveryModal({show: false, order: null})}><form onSubmit={handleDelivery} className="space-y-4"><div className="p-4 bg-slate-800 rounded border border-slate-700 text-center"><p className="text-xs text-slate-500">المبلغ المتبقي</p><h3 className="text-2xl font-bold text-red-500">{formatCurrency(deliveryModal.order?.remainingFromBride)}</h3></div><div><label className={LABEL_CLASS}>المبلغ المدفوع الآن</label><input type="number" name="paidNow" defaultValue={deliveryModal.order?.remainingFromBride} className={INPUT_CLASS}/></div><button className={BTN_PRIMARY}>تأكيد</button></form></Modal>}
             </div>
@@ -540,7 +590,7 @@ const App = () => {
             const accessoriesTotal = accs.reduce((sum, a) => sum + a.price, 0);
             await cloudDb.update(cloudDb.COLLS.BOOKINGS, b.id, {status: BookingStatus.ACTIVE, remainingToPay: b.remainingToPay - remainingPaid, deliveryDetails: { date: new Date().toISOString(), staffName: user?.name, remainingPaid, depositType: f.depositType.value, depositInfo: f.depositInfo.value, accessories: accs }});
             if(remainingPaid > 0) await cloudDb.add(cloudDb.COLLS.FINANCE, {id: `INC-PICKUP-${Math.random()}`, date: new Date().toISOString(), type: 'INCOME', category: 'استلام فستان', amount: remainingPaid, notes: `باقي حجز ${b.id}`});
-            if(accessoriesTotal > 0) await cloudDb.add(cloudDb.COLLS.FINANCE, {id: `INC-ACC-${Math.random()}`, date: new Date().toISOString(), type: 'INCOME', category: 'اكسسوارات', amount: accessoriesTotal, notes: `إضافات حجز ${b.id}`});
+            if(accessoriesTotal > 0) await cloudDb.add(cloudDb.COLLS.FINANCE, {id: `INC-ACC-${Math.random()}`, date: new Date().toISOString(), type: 'INCOME', category: 'إكسسوارات', amount: accessoriesTotal, notes: `إضافات حجز ${b.id}`});
             setPickupModal({show: false, booking: null}); setAccs([]); addToast('تم التسليم للعروس');
         };
         const handleReturn = async (e: any) => {
@@ -629,7 +679,9 @@ const App = () => {
         const cleaningAlerts = dresses.filter(d => d.status === DressStatus.CLEANING);
         const lateReturns = bookings.filter(b => b.status === BookingStatus.ACTIVE && new Date(b.eventDate).getTime() < new Date().getTime() - 86400000);
         return (
-            <div className="space-y-6 animate-fade-in"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"><StatCard title="فساتين الإيجار" value={totalDresses} icon={Shirt} color="bg-purple-500" subtext="متاح بالمحل" /><StatCard title="مع العرائس" value={rentedDresses} icon={RotateCcw} color="bg-green-500" subtext="فساتين نشطة" /><StatCard title="تحتاج تنظيف" value={cleaningAlerts.length} icon={Droplets} color="bg-orange-500" subtext="في المغسلة" /><StatCard title="تأخيرات" value={lateReturns.length} icon={AlertTriangle} color="bg-red-500" subtext="تجاوزت الموعد" /></div><div className="grid grid-cols-1 lg:grid-cols-2 gap-6"><div className={CARD_CLASS}><h3 className="font-bold text-white mb-4 flex items-center gap-2"><Gift size={18} className="text-blue-400"/> تسليمات قريبة (48 ساعة)</h3><div className="space-y-3">{bookings.filter(b => b.status === BookingStatus.PENDING && Math.abs(new Date(b.eventDate).getTime() - new Date().getTime()) < 172800000).slice(0, 5).map(b => (<div key={b.id} className="flex justify-between items-center bg-slate-900 p-3 rounded-lg border-r-2 border-blue-500"><div><p className="text-sm font-bold">{b.customerName}</p><p className="text-xs text-slate-500">{b.dressName}</p></div><div className="text-right"><p className="text-xs font-mono text-blue-300">{formatDate(b.eventDate)}</p><p className="text-[10px] text-red-400">متبقي: {formatCurrency(b.remainingToPay)}</p></div></div>))}{bookings.filter(b => b.status === BookingStatus.PENDING).length === 0 && <p className="text-slate-500 text-sm text-center">لا توجد تسليمات قريبة</p>}</div></div><div className={CARD_CLASS}><h3 className="font-bold text-white mb-4 flex items-center gap-2"><PieChartIcon size={18} className="text-purple-400"/> ملخص المالية</h3><div className="space-y-4"><div className="flex justify-between p-2 bg-slate-900 rounded"><span>إيرادات الشهر</span><span className="text-green-400 font-bold">{formatCurrency(finance.filter(f=>f.type==='INCOME' && new Date(f.date).getMonth() === new Date().getMonth()).reduce((a,b)=>a+b.amount,0))}</span></div><div className="flex justify-between p-2 bg-slate-900 rounded"><span>مصروفات الشهر</span><span className="text-red-400 font-bold">{formatCurrency(finance.filter(f=>f.type==='EXPENSE' && new Date(f.date).getMonth() === new Date().getMonth()).reduce((a,b)=>a+b.amount,0))}</span></div></div></div></div></div>
+            <div className="space-y-6 animate-fade-in"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"><StatCard title="فساتين الإيجار" value={totalDresses} icon={Shirt} color="bg-purple-500" subtext="متاح بالمحل" /><StatCard title="مع العرائس" value={rentedDresses} icon={RotateCcw} color="bg-green-500" subtext="فساتين نشطة" /><StatCard title="تحتاج تنظيف" value={cleaningAlerts.length} icon={Droplets} color="bg-orange-500" subtext="في المغسلة" /><StatCard title="تأخيرات" value={lateReturns.length} icon={AlertTriangle} color="bg-red-500" subtext="تجاوزت الموعد" /></div><div className="grid grid-cols-1 lg:grid-cols-2 gap-6"><div className={CARD_CLASS}><h3 className="font-bold text-white mb-4 flex items-center gap-2"><Gift size={18} className="text-blue-400"/> تسليمات قريبة (48 ساعة)</h3><div className="space-y-3">{bookings.filter(b => b.status === BookingStatus.PENDING && Math.abs(new Date(b.eventDate).getTime() - new Date().getTime()) < 172800000).slice(0, 5).map(b => (<div key={b.id} className="flex justify-between items-center bg-slate-900 p-3 rounded-lg border-r-2 border-blue-500"><div><p className="text-sm font-bold">{b.customerName}</p><p className="text-xs text-slate-500">{b.dressName}</p></div><div className="text-right"><p className="text-xs font-mono text-blue-300">{formatDate(b.eventDate)}</p><p className="text-[10px] text-red-400">متبقي: {formatCurrency(b.remainingToPay)}</p></div></div>))}{bookings.filter(b => b.status === BookingStatus.PENDING).length === 0 && <p className="text-slate-500 text-sm text-center">لا توجد تسليمات قريبة</p>}</div></div><div className={CARD_CLASS}><h3 className="font-bold text-white mb-4 flex items-center gap-2">
+    {/* Fixed missing PieChartIcon by importing from lucide-react */}
+    <PieChartIcon size={18} className="text-purple-400"/> ملخص المالية</h3><div className="space-y-4"><div className="flex justify-between p-2 bg-slate-900 rounded"><span>إيرادات الشهر</span><span className="text-green-400 font-bold">{formatCurrency(finance.filter(f=>f.type==='INCOME' && new Date(f.date).getMonth() === new Date().getMonth()).reduce((a,b)=>a+b.amount,0))}</span></div><div className="flex justify-between p-2 bg-slate-900 rounded"><span>مصروفات الشهر</span><span className="text-red-400 font-bold">{formatCurrency(finance.filter(f=>f.type==='EXPENSE' && new Date(f.date).getMonth() === new Date().getMonth()).reduce((a,b)=>a+b.amount,0))}</span></div></div></div></div></div>
         );
     };
 
@@ -658,7 +710,7 @@ const App = () => {
                             })}
                         </nav>
                         <div className="p-4 border-t border-slate-800 bg-slate-900/50"><div className="flex items-center gap-3 mb-4 px-2"><div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center border border-slate-600"><User size={16}/></div><div><p className="text-xs font-bold text-white">{user.name}</p><p className="text-[10px] text-slate-500">{user.role}</p></div></div><button onClick={() => setUser(null)} className="w-full flex items-center justify-center gap-2 text-red-400 hover:bg-red-950/30 py-2 rounded-lg transition-colors text-xs font-bold"><LogOut size={14} /> خروج</button></div>
-                    </aside>
+                     </aside>
                     <main className="flex-1 overflow-y-auto bg-slate-950 relative">
                         <header className="sticky top-0 z-10 bg-slate-950/80 backdrop-blur border-b border-slate-800 p-4 flex justify-between items-center px-8">
                             <h2 className="text-xl font-bold text-white flex items-center gap-2">{NAV_ITEMS.find(i=>i.id===tab)?.label}</h2>

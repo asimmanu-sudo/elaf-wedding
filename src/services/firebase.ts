@@ -3,18 +3,10 @@ import { initializeApp } from 'firebase/app';
 import { 
   getFirestore, collection, onSnapshot, 
   doc, setDoc, addDoc, deleteDoc, 
-  query, updateDoc, orderBy
+  query
 } from 'firebase/firestore';
-import { User } from '../types';
+import type { User } from '../types';
 
-/**
- * للحصول على البيانات أدناه:
- * 1. اذهب إلى https://console.firebase.google.com/
- * 2. أنشئ مشروعاً جديداً باسم "ElafWedding"
- * 3. من القائمة الجانبية Build اذهب إلى Firestore Database وأنشئ قاعدة بيانات (اختر Start in test mode)
- * 4. اذهب إلى Project Settings (أيقونة الترس) -> General -> أضف تطبيق Web
- * 5. انسخ الكائن firebaseConfig وضعه هنا بدلاً من البيانات الموجودة بالأسفل
- */
 const firebaseConfig = {
   apiKey: "AIzaSyCmMFroJp5aHg3HGhrdn8T-lf08YIiLxdU",
   authDomain: "elaf-for-wedding-dresses.firebaseapp.com",
@@ -24,18 +16,15 @@ const firebaseConfig = {
   appId: "1:177838569788:web:b5cb0bed7a37776daa8639",
 };
 
-// نعتبر التطبيق غير مهيأ إذا لم يتم تغيير المفاتيح الافتراضية
-export const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
+export const isConfigured = true; 
 
 let db: any;
 
-if (isConfigured) {
-    try {
-        const app = initializeApp(firebaseConfig);
-        db = getFirestore(app);
-    } catch (e) {
-        console.error("Firebase Initialization Error:", e);
-    }
+try {
+    const app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+} catch (e) {
+    console.error("Firebase Initialization Error:", e);
 }
 
 const COLLS = {
@@ -49,7 +38,6 @@ const COLLS = {
 };
 
 export const cloudDb = {
-    // الاستماع للتغييرات بشكل حي (مهم للمزامنة بين الأجهزة)
     subscribe: (collectionName: string, callback: (data: any[]) => void) => {
         if (!db) return () => {};
         try {
@@ -66,17 +54,15 @@ export const cloudDb = {
         }
     },
 
-    // إضافة مستند جديد
     add: async (collectionName: string, data: any) => {
         if (!db) throw new Error("Firebase is not configured");
         try {
-            // إذا كان هناك ID محدد نستخدمه، وإلا نترك Firestore ينشئ واحداً
-            if (data.id && !data.id.startsWith('0.')) {
+            if (data.id && typeof data.id === 'string' && !data.id.startsWith('0.')) {
                 const docRef = doc(db, collectionName, data.id);
                 await setDoc(docRef, data, { merge: true });
                 return data.id;
             } else {
-                const { id, ...rest } = data;
+                const { id: _, ...rest } = data;
                 const docRef = await addDoc(collection(db, collectionName), rest);
                 return docRef.id;
             }
@@ -86,7 +72,6 @@ export const cloudDb = {
         }
     },
 
-    // تحديث بيانات مستند
     update: async (collectionName: string, id: string, data: any) => {
         if (!db) throw new Error("Firebase is not configured");
         try {
@@ -98,7 +83,6 @@ export const cloudDb = {
         }
     },
 
-    // حذف مستند
     delete: async (collectionName: string, id: string) => {
         if (!db) throw new Error("Firebase is not configured");
         try {
@@ -109,7 +93,6 @@ export const cloudDb = {
         }
     },
 
-    // نظام تسجيل العمليات السحابي
     log: async (user: User, action: string, details: string) => {
         if (!db) return;
         try {
