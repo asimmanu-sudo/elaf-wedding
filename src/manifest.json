@@ -1,0 +1,21 @@
+
+{
+  "short_name": "إيلاف",
+  "name": "إيلاف لفساتين الزفاف",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3534/3534341.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3534/3534341.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#020617",
+  "background_color": "#020617"
+}
