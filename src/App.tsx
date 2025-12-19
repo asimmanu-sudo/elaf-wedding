@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { createRoot } from 'react-dom/client';
 import { 
   Home, Shirt, Calendar, Truck, Users, DollarSign, FileText, Settings, LogOut, Plus, 
   Search, Edit, Trash2, Check, X, Printer, RefreshCw, Droplets, User, Factory, 
@@ -41,7 +40,6 @@ const toInputDate = (iso: string | undefined) => {
 const formatCurrency = (val: number | undefined) => new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP', maximumFractionDigits: 0 }).format(val || 0);
 
 // --- Components ---
-
 const ToastContext = React.createContext<{ addToast: (msg: string, type?: 'success'|'error'|'info') => void }>({ addToast: () => {} });
 
 const ToastContainer = ({ toasts, removeToast }: any) => (
@@ -690,5 +688,4 @@ const App = () => {
         </ErrorBoundary>
     );
 };
-const root = createRoot(document.getElementById('root')!);
-root.render(<App />);
+export default App;
