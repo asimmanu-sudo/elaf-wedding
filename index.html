@@ -3,7 +3,7 @@
 <html lang="ar" dir="rtl" class="dark">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover" />
     <meta name="theme-color" content="#020617" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -36,12 +36,21 @@
         background-color: #020617; 
         color: #f1f5f9;
         -webkit-tap-highlight-color: transparent;
-        overflow: hidden;
+        overflow-x: hidden;
       }
       #root { height: 100%; }
-      .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-      .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-      .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+      /* تحسين السكرول بار للموبايل */
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+      
+      /* منع الارتداد في الايفون */
+      body {
+        position: fixed;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
     </style>
   <script type="importmap">
 {
@@ -58,11 +67,9 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
   <body class="bg-slate-950 text-slate-100 font-sans">
     <div id="root"></div>
-    <!-- تأكد أن المسار هنا يبدأ بـ / مباشرة وليس /src/ -->
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
