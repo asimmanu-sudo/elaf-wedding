@@ -22,28 +22,11 @@ export interface User {
 }
 
 export interface Measurements {
-  // Detailed Sewing Measurements as requested
-  neck?: string; // محيط الرقبة
-  shoulder?: string; // محيط الكتف
-  chest?: string; // محيط الصدر
-  underChest?: string; // محيط تحت الصدر
-  chestDart?: string; // طول بنس الصدر
-  waist?: string; // محيط الخصر
-  backLength?: string; // طول الظهر
-  hips?: string; // محيط الهانش
-  fullLength?: string; // الطول الكامل
-  sleeve?: string; // طول اليد
-  armhole?: string; // محيط الابط
-  arm?: string; // محيط الذراع
-  forearm?: string; // محيط الساعد
-  wrist?: string; // محيط الاسواره
-  legOpening?: string; // محيط فتحة الرجل
-  
-  // Design Specifics
-  bustType?: string; // نوع الصدر
-  skirtType?: string; // نوع التنورة
-  materials?: string; // الخامات المستخدمة
-  orderNotes?: string; // الشرح المطلوب للاوردر
+  neck?: string; shoulder?: string; chest?: string; underChest?: string;
+  chestDart?: string; waist?: string; backLength?: string; hips?: string;
+  fullLength?: string; sleeve?: string; armhole?: string; arm?: string;
+  forearm?: string; wrist?: string; legOpening?: string;
+  bustType?: string; skirtType?: string; materials?: string; orderNotes?: string;
 }
 
 export interface Dress {
@@ -74,7 +57,7 @@ export interface DeliveryDetails {
     staffName: string;
     remainingPaid: number;
     depositType: DepositType;
-    depositInfo: string; // ID number, or cash amount, or gold description
+    depositInfo: string;
     accessories: Accessory[];
     notes?: string;
 }
@@ -98,14 +81,8 @@ export interface Booking {
   paymentMethodDetails?: string; 
   notes: string; status: BookingStatus; createdAt: string;
   measurements?: Measurements;
-  
-  // New Delivery/Return Logic
   deliveryDetails?: DeliveryDetails;
   returnDetails?: ReturnDetails;
-}
-
-export interface Delivery { // Deprecated in favor of embedded details, kept for compatibility if needed
-  id: string; bookingId: string; deliveryDate: string;
 }
 
 export interface FinanceRecord {

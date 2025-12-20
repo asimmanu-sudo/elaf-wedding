@@ -1,6 +1,6 @@
 
 import type { 
-  Dress, Booking, FinanceRecord, AuditLog, Customer, User, Delivery, SaleOrder
+  Dress, Booking, FinanceRecord, AuditLog, Customer, User, SaleOrder
 } from '../types';
 import { 
   DressType, DressStatus, BookingStatus, UserRole, SaleStatus, FactoryPaymentStatus, PaymentMethod
@@ -20,7 +20,8 @@ const daysFromNow = (n: number) => {
 const generateSeedData = () => {
   const dresses: Dress[] = [];
   const bookings: Booking[] = [];
-  const deliveries: Delivery[] = [];
+  // Fix: Removed missing 'Delivery' type and used 'any[]' for the empty deliveries array as it's currently unused
+  const deliveries: any[] = [];
   const finance: FinanceRecord[] = [];
   const customers: Customer[] = [];
   const audit: AuditLog[] = [];
