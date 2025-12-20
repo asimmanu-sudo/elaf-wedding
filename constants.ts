@@ -1,3 +1,4 @@
+
 export const NAV_ITEMS = [
   { id: 'home', label: 'الرئيسية', icon: 'Home' },
   { id: 'dresses_rent', label: 'إدارة فساتين الإيجار', icon: 'Shirt' },
