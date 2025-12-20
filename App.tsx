@@ -28,9 +28,6 @@ const LABEL_CLASS = "block text-[11px] mb-1.5 text-slate-400 font-bold uppercase
 const BTN_PRIMARY = "w-full bg-brand-600 hover:bg-brand-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-brand-900/20 flex justify-center items-center gap-2 active:scale-95 transition-all text-base";
 const CARD_CLASS = "bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-2xl p-5 shadow-sm relative overflow-hidden group";
 const BADGE_CLASS = "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border inline-flex items-center justify-center gap-1.5";
-const TABLE_HEAD_CLASS = "bg-slate-900/80 text-slate-400 font-bold text-xs uppercase tracking-wider py-4 px-4 text-right sticky top-0 backdrop-blur-md z-10";
-const TABLE_ROW_CLASS = "hover:bg-slate-700/30 transition-colors border-b border-slate-800/50 last:border-0";
-const COLORS = ['#d946ef', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
 
 // --- Helpers ---
 const formatDate = (iso: string) => { 
@@ -60,10 +57,10 @@ const Modal = ({ title, children, onClose, size = 'md' }: any) => (
     <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-sm p-0 md:p-4 animate-fade-in">
         <div className={`bg-slate-900 border-t md:border border-slate-800 rounded-t-3xl md:rounded-2xl shadow-2xl w-full ${size==='lg'?'max-w-4xl':'max-w-xl'} flex flex-col animate-slide-in-up max-h-[95vh]`}>
             <div className="flex justify-between items-center p-5 border-b border-slate-800">
-                <h2 className="text-lg font-bold text-brand-300">{title}</h2>
+                <h2 className="text-lg font-bold text-brand-300">{String(title)}</h2>
                 <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400"><X size={22}/></button>
             </div>
-            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 pb-12">{children}</div>
+            <div className="p-6 overflow-y-auto flex-1 pb-12">{children}</div>
         </div>
     </div>
 );
@@ -88,12 +85,12 @@ const PrePrintedInvoice = ({ data, type, onClose }: {data: any, type: string, on
                 </div>
                 <div className="grid grid-cols-2 gap-10 text-sm mb-10 border-b-2 border-dashed border-gray-300 pb-10">
                     <div className="space-y-3">
-                        <p><span className="font-black text-lg">اسم العميلة:</span> <span className="text-xl">{data.customerName || data.brideName}</span></p>
-                        <p><span className="font-bold">رقم الهاتف:</span> {data.customerPhone || data.bridePhone}</p>
+                        <p><span className="font-black text-lg">اسم العميلة:</span> <span className="text-xl">{String(data.customerName || data.brideName || '')}</span></p>
+                        <p><span className="font-bold">رقم الهاتف:</span> {String(data.customerPhone || data.bridePhone || '')}</p>
                         <p><span className="font-bold">تاريخ التعاقد:</span> {formatDate(new Date().toISOString())}</p>
                     </div>
                     <div className="space-y-3 text-left">
-                        <p><span className="font-bold">كود الموديل:</span> {data.factoryCode || data.dressId || '-'}</p>
+                        <p><span className="font-bold">كود الموديل:</span> {String(data.factoryCode || data.dressId || '-')}</p>
                         <p><span className="font-black text-lg">موعد المناسبة:</span> <span className="text-xl font-serif">{formatDate(data.eventDate || data.expectedDeliveryDate)}</span></p>
                     </div>
                 </div>
@@ -102,7 +99,7 @@ const PrePrintedInvoice = ({ data, type, onClose }: {data: any, type: string, on
                         <h3 className="font-black text-xl mb-6 border-b-2 border-black inline-block">جدول المقاسات الفني (سم)</h3>
                         <div className="grid grid-cols-3 gap-y-4 gap-x-10 text-sm font-bold">
                             {Object.entries(data.measurements).map(([k, v]) => (
-                                v ? <div key={k} className="flex justify-between border-b border-gray-200"><span>{k}:</span> <span>{String(v)}</span></div> : null
+                                v ? <div key={k} className="flex justify-between border-b border-gray-200"><span>{String(k)}:</span> <span>{String(v)}</span></div> : null
                             ))}
                         </div>
                     </div>
@@ -131,7 +128,6 @@ const PrePrintedInvoice = ({ data, type, onClose }: {data: any, type: string, on
 };
 
 // --- Sub-Managers ---
-
 const HomeManager = ({ dresses, bookings, finance }: any) => {
     const today = new Date().toDateString();
     const stats = [
@@ -146,20 +142,24 @@ const HomeManager = ({ dresses, bookings, finance }: any) => {
             <div className="grid grid-cols-2 gap-4">
                 {stats.map((s, i) => (
                     <div key={i} className={CARD_CLASS}>
-                        <div className={`w-10 h-10 rounded-xl ${s.bg} flex items-center justify-center mb-3 ${s.color}`}><s.icon size={20} /></div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">{s.title}</p>
-                        <p className="text-lg font-black text-white mt-1">{s.value}</p>
+                        <div className={`w-10 h-10 rounded-xl ${s.bg} flex items-center justify-center mb-3 ${s.color}`}>
+                            <s.icon size={20} />
+                        </div>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">{String(s.title)}</p>
+                        <p className="text-lg font-black text-white mt-1">{String(s.value)}</p>
                     </div>
                 ))}
             </div>
             <div className={CARD_CLASS}>
-                {/* Fixed: Clock was missing from lucide-react imports */}
                 <h3 className="font-bold text-white mb-4 flex items-center gap-2"><Clock size={18} className="text-brand-400"/> آخر الحركات السحابية</h3>
                 <div className="space-y-3">
                     {bookings.slice(0, 5).map((b:any) => (
                         <div key={b.id} className="p-3 bg-slate-800/30 rounded-2xl border border-slate-800 flex justify-between items-center group-hover:bg-slate-800/50 transition-all">
-                            <div><p className="text-sm font-bold text-white">{b.customerName}</p><p className="text-[10px] text-slate-500">فستان: {b.dressName}</p></div>
-                            <span className={BADGE_CLASS + " " + getStatusColor(b.status)}>{b.status}</span>
+                            <div>
+                                <p className="text-sm font-bold text-white">{String(b.customerName)}</p>
+                                <p className="text-[10px] text-slate-500">فستان: {String(b.dressName)}</p>
+                            </div>
+                            <span className={BADGE_CLASS + " " + getStatusColor(b.status)}>{String(b.status)}</span>
                         </div>
                     ))}
                 </div>
@@ -186,8 +186,8 @@ const RentalManager = ({ dresses, onAdd, onUpdate }: any) => {
                 {filtered.map((d:any) => (
                     <div key={d.id} className={CARD_CLASS}>
                         <div className="flex justify-between items-start mb-4">
-                            <div><h4 className="font-black text-white text-lg">{d.name}</h4><p className="text-xs text-slate-500 font-bold uppercase">{d.style}</p></div>
-                            <span className={BADGE_CLASS + " " + getStatusColor(d.status)}>{d.status}</span>
+                            <div><h4 className="font-black text-white text-lg">{String(d.name)}</h4><p className="text-xs text-slate-500 font-bold uppercase">{String(d.style)}</p></div>
+                            <span className={BADGE_CLASS + " " + getStatusColor(d.status)}>{String(d.status)}</span>
                         </div>
                         <div className="flex justify-between items-center pt-3 border-t border-slate-800">
                             <p className="text-brand-400 font-bold">{formatCurrency(d.rentalPrice)}</p>
@@ -221,7 +221,7 @@ const RentalManager = ({ dresses, onAdd, onUpdate }: any) => {
                             <div><label className={LABEL_CLASS}>سعر الإيجار</label><input name="rPrice" type="number" defaultValue={editing?.rentalPrice} className={INPUT_CLASS} required /></div>
                         </div>
                         <select name="status" defaultValue={editing?.status || DressStatus.AVAILABLE} className={INPUT_CLASS}>
-                            {Object.values(DressStatus).map(s=><option key={s} value={s}>{s}</option>)}
+                            {Object.values(DressStatus).map(s=><option key={s} value={s}>{String(s)}</option>)}
                         </select>
                         <button className={BTN_PRIMARY}>حفظ سحابياً</button>
                     </form>
@@ -242,8 +242,8 @@ const BookingManager = ({ bookings, dresses, onAdd, onUpdate, onPrint }: any) =>
                 {bookings.filter((b:any)=>b.status!==BookingStatus.CANCELLED).map((b:any)=>(
                     <div key={b.id} className={CARD_CLASS}>
                         <div className="flex justify-between mb-4">
-                            <div><h4 className="font-bold text-white text-lg">{b.customerName}</h4><p className="text-xs text-slate-500">{b.dressName}</p></div>
-                            <span className={BADGE_CLASS + " " + getStatusColor(b.status)}>{b.status}</span>
+                            <div><h4 className="font-bold text-white text-lg">{String(b.customerName)}</h4><p className="text-xs text-slate-500">{String(b.dressName)}</p></div>
+                            <span className={BADGE_CLASS + " " + getStatusColor(b.status)}>{String(b.status)}</span>
                         </div>
                         <div className="p-4 bg-slate-950/50 rounded-2xl border border-slate-800 flex justify-between mb-4">
                             <div><p className="text-[10px] text-slate-500 uppercase font-bold">المناسبة</p><p className="text-sm font-bold text-brand-300">{formatDate(b.eventDate)}</p></div>
@@ -280,7 +280,7 @@ const BookingManager = ({ bookings, dresses, onAdd, onUpdate, onPrint }: any) =>
                         <select name="dressId" defaultValue={editing?.dressId} className={INPUT_CLASS} required>
                             <option value="">اختر الفستان...</option>
                             {dresses.filter((d:any)=>d.status===DressStatus.AVAILABLE).map((d:any)=>(
-                                <option key={d.id} value={d.id}>{d.name} ({d.style})</option>
+                                <option key={d.id} value={d.id}>{String(d.name)} ({String(d.style)})</option>
                             ))}
                         </select>
                         <input name="date" type="date" defaultValue={toInputDate(editing?.eventDate)} className={INPUT_CLASS} required />
@@ -307,10 +307,10 @@ const SalesManager = ({ orders, onAdd, onUpdate, onPrint }: any) => {
                 {orders.map((o:any)=>(
                     <div key={o.id} className={CARD_CLASS}>
                         <div className="flex justify-between mb-4">
-                            <div><h4 className="font-black text-white text-lg">{o.brideName}</h4><p className="text-[10px] text-slate-500 font-bold uppercase">كود: {o.factoryCode}</p></div>
-                            <span className={BADGE_CLASS + " " + getStatusColor(o.status)}>{o.status}</span>
+                            <div><h4 className="font-black text-white text-lg">{String(o.brideName)}</h4><p className="text-[10px] text-slate-500 font-bold uppercase">كود: {String(o.factoryCode)}</p></div>
+                            <span className={BADGE_CLASS + " " + getStatusColor(o.status)}>{String(o.status)}</span>
                         </div>
-                        <p className="text-xs text-slate-400 mb-4 line-clamp-2">{o.dressDescription}</p>
+                        <p className="text-xs text-slate-400 mb-4 line-clamp-2">{String(o.dressDescription)}</p>
                         <div className="grid grid-cols-2 gap-2 mb-4">
                             <div className="p-3 bg-slate-950/50 rounded-xl border border-slate-800 text-center"><p className="text-[9px] text-slate-500">الموعد</p><p className="text-sm font-bold text-white">{formatDate(o.expectedDeliveryDate)}</p></div>
                             <div className="p-3 bg-slate-950/50 rounded-xl border border-slate-800 text-center"><p className="text-[9px] text-slate-500">المتبقي</p><p className="text-sm font-black text-red-500">{formatCurrency(o.remainingFromBride)}</p></div>
@@ -356,7 +356,7 @@ const SalesManager = ({ orders, onAdd, onUpdate, onPrint }: any) => {
                 </Modal>
             )}
             {measureModal.show && (
-                <Modal title={`مقاسات العروس: ${measureModal.order.brideName}`} size="lg" onClose={()=>setMeasureModal({show:false, order:null})}>
+                <Modal title={`مقاسات العروس: ${String(measureModal.order.brideName)}`} size="lg" onClose={()=>setMeasureModal({show:false, order:null})}>
                     <form onSubmit={async (e:any)=>{
                         e.preventDefault();
                         const fd = new FormData(e.target);
@@ -366,7 +366,7 @@ const SalesManager = ({ orders, onAdd, onUpdate, onPrint }: any) => {
                     }} className="space-y-6">
                         <div className="grid grid-cols-3 gap-3">
                             {['محيط الرقبة', 'محيط الكتف', 'محيط الصدر', 'تحت الصدر', 'خصر', 'هانش', 'طول ظهر', 'طول كلي', 'طول يد'].map(m=>(
-                                <div key={m}><label className="text-[9px] text-slate-500 font-bold mb-1 block">{m}</label><input name={m} defaultValue={measureModal.order?.measurements?.[m]} className={INPUT_CLASS} /></div>
+                                <div key={m}><label className="text-[9px] text-slate-500 font-bold mb-1 block">{String(m)}</label><input name={m} defaultValue={measureModal.order?.measurements?.[m]} className={INPUT_CLASS} /></div>
                             ))}
                         </div>
                         <textarea name="orderNotes" placeholder="ملاحظات إضافية..." className={INPUT_CLASS + " h-24"} defaultValue={measureModal.order?.measurements?.orderNotes} />
@@ -379,8 +379,7 @@ const SalesManager = ({ orders, onAdd, onUpdate, onPrint }: any) => {
 };
 
 // --- Main App ---
-
-const App = () => {
+export default function App() {
     if (!isConfigured) return <div className="p-8 text-center text-red-500">Firebase Error.</div>;
 
     const [user, setUser] = useState<UserType|null>(null);
@@ -404,8 +403,11 @@ const App = () => {
             cloudDb.subscribe(cloudDb.COLLS.SALES, setOrders),
             cloudDb.subscribe(cloudDb.COLLS.USERS, setUsers),
         ];
-        setTimeout(() => setLoading(false), 1500);
-        return () => unsubs.forEach(u => u());
+        const timer = setTimeout(() => setLoading(false), 2000);
+        return () => {
+            unsubs.forEach(u => u());
+            clearTimeout(timer);
+        };
     }, []);
 
     const addToast = (msg: string, type: 'success'|'error' = 'success') => {
@@ -423,7 +425,7 @@ const App = () => {
 
     if (!user) return (
         <div className="min-h-screen flex items-center justify-center bg-slate-950 p-6 relative overflow-hidden">
-            <div className="w-full max-w-sm bg-slate-900/50 backdrop-blur-2xl border border-slate-800 p-8 rounded-[2.5rem] shadow-2xl relative z-10">
+            <div className="w-full max-sm:px-4 max-w-sm bg-slate-900/50 backdrop-blur-2xl border border-slate-800 p-8 rounded-[2.5rem] shadow-2xl relative z-10">
                 <div className="text-center mb-10">
                     <div className="w-20 h-20 bg-brand-600 rounded-3xl mx-auto mb-6 flex items-center justify-center text-white shadow-2xl shadow-brand-500/40"><Shirt size={40} /></div>
                     <h1 className="text-3xl font-black text-white">إيلاف للزفاف</h1>
@@ -442,6 +444,8 @@ const App = () => {
         </div>
     );
 
+    const activeLabel = NAV_ITEMS.find(i=>i.id===tab)?.label || '';
+
     return (
         <ToastContext.Provider value={{ addToast }}>
             <div className="flex flex-col h-screen bg-slate-950 text-slate-100 font-sans selection:bg-brand-500/30" dir="rtl">
@@ -452,7 +456,7 @@ const App = () => {
                 <main className="flex-1 overflow-y-auto pt-20 pb-24 px-4">
                     <div className="max-w-xl mx-auto">
                         <div className="mb-6 flex justify-between items-end px-2">
-                             <h2 className="text-2xl font-black text-white">{NAV_ITEMS.find(i=>i.id===tab)?.label}</h2>
+                             <h2 className="text-2xl font-black text-white">{String(activeLabel)}</h2>
                              <p className="text-[10px] text-slate-500 font-bold uppercase">{formatDate(new Date().toISOString())}</p>
                         </div>
                         {tab === 'home' && <HomeManager dresses={dresses} bookings={bookings} finance={finance} />}
@@ -475,7 +479,7 @@ const App = () => {
                         <div className="grid grid-cols-2 gap-4">
                             {NAV_ITEMS.map(item => (
                                 <button key={item.id} onClick={() => {setTab(item.id); setMenuOpen(false)}} className={`bg-slate-900 border border-slate-800 p-6 rounded-[2rem] flex flex-col items-center gap-3 active:bg-brand-600 transition-all ${tab===item.id?'border-brand-500 bg-brand-500/5':''}`}>
-                                    <span className="text-xs font-black text-slate-200 uppercase tracking-widest">{item.label}</span>
+                                    <span className="text-xs font-black text-slate-200 uppercase tracking-widest">{String(item.label)}</span>
                                 </button>
                             ))}
                         </div>
@@ -484,13 +488,11 @@ const App = () => {
                 {toasts.map(t=>(
                     <div key={t.id} className={`fixed bottom-24 inset-x-4 z-[200] px-4 py-3 rounded-2xl shadow-2xl border flex items-center gap-3 animate-slide-in-up max-w-sm mx-auto w-full pointer-events-none ${t.type==='success'?'bg-emerald-950/90 border-emerald-500/50 text-emerald-200':'bg-red-950/90 border-red-500/50 text-red-200'}`}>
                         {t.type==='success' ? <Check size={18}/> : <AlertCircle size={18}/>}
-                        <span className="text-xs font-bold">{t.msg}</span>
+                        <span className="text-xs font-bold">{String(t.msg)}</span>
                     </div>
                 ))}
                 {printData && <PrePrintedInvoice data={printData.data} type={printData.type} onClose={()=>setPrintData(null)} />}
             </div>
         </ToastContext.Provider>
     );
-};
-
-export default App;
+}

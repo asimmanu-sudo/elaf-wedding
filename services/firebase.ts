@@ -1,9 +1,9 @@
 
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApp, getApps } from 'firebase/app';
 import { 
   getFirestore, collection, onSnapshot, 
   doc, setDoc, addDoc, deleteDoc, 
-  query
+  query, Firestore
 } from 'firebase/firestore';
 import type { User } from '../types';
 
@@ -16,16 +16,17 @@ const firebaseConfig = {
   appId: "1:177838569788:web:b5cb0bed7a37776daa8639",
 };
 
-export const isConfigured = true; 
-
-let db: any;
+// تهيئة التطبيق والخدمات بشكل يضمن التزامن الصحيح
+let db: Firestore;
 
 try {
-    const app = initializeApp(firebaseConfig);
+    const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     db = getFirestore(app);
-} catch (e) {
-    console.error("Firebase Initialization Error:", e);
+} catch (error) {
+    console.error("Firebase initialization failed:", error);
 }
+
+export const isConfigured = !!db;
 
 const COLLS = {
     DRESSES: 'dresses',
@@ -39,7 +40,10 @@ const COLLS = {
 
 export const cloudDb = {
     subscribe: (collectionName: string, callback: (data: any[]) => void) => {
-        if (!db) return () => {};
+        if (!db) {
+            console.error("Firestore is not initialized.");
+            return () => {};
+        }
         try {
             const q = query(collection(db, collectionName));
             return onSnapshot(q, (snapshot) => {
@@ -55,7 +59,7 @@ export const cloudDb = {
     },
 
     add: async (collectionName: string, data: any) => {
-        if (!db) throw new Error("Firebase is not configured");
+        if (!db) throw new Error("Firestore is not initialized.");
         try {
             if (data.id && typeof data.id === 'string' && !data.id.startsWith('0.')) {
                 const docRef = doc(db, collectionName, data.id);
@@ -73,7 +77,7 @@ export const cloudDb = {
     },
 
     update: async (collectionName: string, id: string, data: any) => {
-        if (!db) throw new Error("Firebase is not configured");
+        if (!db) throw new Error("Firestore is not initialized.");
         try {
             const docRef = doc(db, collectionName, id);
             await setDoc(docRef, data, { merge: true });
@@ -84,7 +88,7 @@ export const cloudDb = {
     },
 
     delete: async (collectionName: string, id: string) => {
-        if (!db) throw new Error("Firebase is not configured");
+        if (!db) throw new Error("Firestore is not initialized.");
         try {
             await deleteDoc(doc(db, collectionName, id));
         } catch (e) {
