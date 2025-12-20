@@ -28,11 +28,25 @@ export interface User {
 }
 
 export interface Measurements {
-  neck?: string; shoulder?: string; chest?: string; underChest?: string;
-  chestDart?: string; waist?: string; backLength?: string; hips?: string;
-  fullLength?: string; sleeve?: string; armhole?: string; arm?: string;
-  forearm?: string; wrist?: string; legOpening?: string;
-  bustType?: string; skirtType?: string; materials?: string; orderNotes?: string;
+  neck?: string; 
+  shoulder?: string; 
+  chest?: string; 
+  underChest?: string;
+  chestDart?: string; 
+  waist?: string; 
+  backLength?: string; 
+  hips?: string;
+  fullLength?: string; 
+  sleeve?: string; 
+  armhole?: string; 
+  arm?: string;
+  forearm?: string; 
+  wrist?: string; 
+  legOpening?: string;
+  bustType?: string; 
+  skirtType?: string; 
+  materials?: string; 
+  orderNotes?: string;
 }
 
 export interface Dress {
@@ -47,7 +61,7 @@ export interface SaleOrder {
   id: string; factoryCode: string; brideName: string; bridePhone: string;
   factoryPrice: number; factoryDepositPaid: number; factoryPaidDate?: string;
   sellPrice: number; deposit: number; remainingFromBride: number;
-  expectedDeliveryDate: string; status: SaleStatus; factoryStatus: FactoryPaymentStatus;
+  status: SaleStatus; factoryStatus: FactoryPaymentStatus;
   image: string; notes: string; dressDescription: string;
   orderDate: string; createdAt: string;
   measurements?: Measurements;
@@ -58,25 +72,6 @@ export interface Accessory {
     price: number;
 }
 
-export interface DeliveryDetails {
-    date: string;
-    staffName: string;
-    remainingPaid: number;
-    depositType: DepositType;
-    depositInfo: string;
-    accessories: Accessory[];
-    notes?: string;
-}
-
-export interface ReturnDetails {
-    date: string;
-    staffName: string;
-    isDamage: boolean;
-    damageFee: number;
-    damageNotes: string;
-    notes?: string;
-}
-
 export interface Booking {
   id: string; customerId: string; customerName: string; customerPhone: string;
   dressId: string; dressName: string;
@@ -84,17 +79,16 @@ export interface Booking {
   agreedRentalPrice: number; paidDeposit: number;
   remainingToPay: number; 
   paymentMethod: PaymentMethod;
-  paymentMethodDetails?: string; 
   notes: string; status: BookingStatus; createdAt: string;
   measurements?: Measurements;
-  deliveryDetails?: DeliveryDetails;
-  returnDetails?: ReturnDetails;
+  deliveryDetails?: any;
+  returnDetails?: any;
 }
 
 export interface FinanceRecord {
   id: string; date: string; type: 'INCOME' | 'EXPENSE';
   category: string; subCategory?: string; amount: number; notes: string; relatedId?: string;
-  createdBy?: string; targetName?: string; // لاسم الموظف في الرواتب أو الفساتين في التنظيف
+  createdBy?: string; targetName?: string; 
 }
 
 export interface AuditLog {
@@ -103,5 +97,4 @@ export interface AuditLog {
 
 export interface Customer {
   id: string; name: string; phone: string; notes: string; firstSeenDate: string;
-  lastTransactionType?: string; 
 }

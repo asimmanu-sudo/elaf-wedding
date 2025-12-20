@@ -86,11 +86,12 @@ const generateSeedData = () => {
   bookings.push(bookingFuture);
 
   // --- 5. Sales (Design) ---
+  // Fix: Removed expectedDeliveryDate as it does not exist in the SaleOrder interface
   saleOrders.push({
       id: 'SALE-001', factoryCode: 'FAC-101', brideName: customerNames[3], bridePhone: '0505555555',
       factoryPrice: 3000, factoryDepositPaid: 1000,
       sellPrice: 5000, deposit: 2000, remainingFromBride: 3000,
-      expectedDeliveryDate: daysFromNow(10), status: SaleStatus.DESIGNING, factoryStatus: FactoryPaymentStatus.PARTIAL,
+      status: SaleStatus.DESIGNING, factoryStatus: FactoryPaymentStatus.PARTIAL,
       image: '', notes: 'مقاسات خاصة', dressDescription: 'فستان سواريه مطرز', orderDate: daysFromNow(-10), createdAt: daysFromNow(-10)
   });
 
