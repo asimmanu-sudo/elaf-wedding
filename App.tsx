@@ -6,16 +6,16 @@ import {
   RotateCcw, AlertCircle, TrendingUp, Bell, ShoppingBag,
   Gift, AlertTriangle, Lock, Menu, MoreHorizontal,
   Scissors, FileCheck, Cloud, Loader2, Tag, Sparkles, PieChart as PieChartIcon,
-  ChevronRight, Phone, MapPin, CreditCard, Trash, Clock
+  ChevronRight, Phone, MapPin, CreditCard, Trash, Clock, Undo2, CheckSquare,
+  TrendingDown, BarChart3
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid, Legend, PieChart, Pie, Cell
 } from 'recharts';
-import { GoogleGenAI } from "@google/genai";
 import { cloudDb, isConfigured } from './services/firebase';
 import { 
     UserRole, DressType, DressStatus, BookingStatus, 
-    SaleStatus, FactoryPaymentStatus, PaymentMethod
+    SaleStatus, FactoryPaymentStatus, PaymentMethod, DepositType
 } from './types';
 import type { 
     User as UserType, Dress, Booking, 
@@ -25,11 +25,12 @@ import type {
 import { NAV_ITEMS, PERMISSIONS_LIST } from './constants';
 
 // --- Styles Constants ---
-const INPUT_CLASS = "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3.5 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition-all placeholder-slate-500 text-base";
+const INPUT_CLASS = "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none transition-all placeholder-slate-500 text-sm";
 const LABEL_CLASS = "block text-[11px] mb-1.5 text-slate-400 font-bold uppercase tracking-wider px-1";
-const BTN_PRIMARY = "w-full bg-brand-600 hover:bg-brand-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-brand-900/20 flex justify-center items-center gap-2 active:scale-95 transition-all text-base";
-const CARD_CLASS = "bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden";
+const BTN_PRIMARY = "w-full bg-brand-600 hover:bg-brand-700 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-brand-900/20 flex justify-center items-center gap-2 active:scale-95 transition-all text-sm";
+const CARD_CLASS = "bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-2xl p-5 shadow-sm relative overflow-hidden group";
 const BADGE_CLASS = "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border inline-flex items-center justify-center gap-1.5";
+const COLORS = ['#d946ef', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
 
 // --- Helpers ---
 const formatDate = (iso: string) => { 
@@ -37,6 +38,7 @@ const formatDate = (iso: string) => {
     try { return new Date(iso).toLocaleDateString('ar-EG'); } catch { return '-'; } 
 };
 const formatCurrency = (val: number | undefined) => new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP', maximumFractionDigits: 0 }).format(val || 0);
+const toInputDate = (iso: string | undefined) => iso ? new Date(iso).toISOString().split('T')[0] : '';
 
 const getStatusColor = (status: string) => {
     switch(status) {
@@ -51,9 +53,13 @@ const getStatusColor = (status: string) => {
     }
 };
 
-const Modal = ({ title, children, onClose }: any) => (
+// --- Contexts ---
+const ToastContext = React.createContext<{ addToast: (msg: string, type?: 'success'|'error') => void }>({ addToast: () => {} });
+
+// --- Components ---
+const Modal = ({ title, children, onClose, size = 'md' }: any) => (
     <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-sm p-0 md:p-4 animate-fade-in">
-        <div className="bg-slate-900 border-t md:border border-slate-800 rounded-t-3xl md:rounded-2xl shadow-2xl w-full max-w-xl flex flex-col animate-slide-in-up max-h-[90vh]">
+        <div className={`bg-slate-900 border-t md:border border-slate-800 rounded-t-3xl md:rounded-2xl shadow-2xl w-full ${size==='lg'?'max-w-3xl':'max-w-xl'} flex flex-col animate-slide-in-up max-h-[95vh]`}>
             <div className="flex justify-between items-center p-5 border-b border-slate-800">
                 <h2 className="text-lg font-bold text-brand-300">{title}</h2>
                 <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400"><X size={22}/></button>
@@ -63,100 +69,149 @@ const Modal = ({ title, children, onClose }: any) => (
     </div>
 );
 
-// --- Section 1: Home (Dashboard) ---
-const HomeManager = ({ dresses, bookings, finance }: any) => {
-    const today = new Date().toDateString();
-    const stats = [
-        { title: 'إيجار متاح', value: dresses.filter((d:any)=>d.status===DressStatus.AVAILABLE).length, icon: Shirt, color: 'text-green-400', bg: 'bg-green-500/10' },
-        { title: 'حجوزات قادمة', value: bookings.filter((b:any)=>b.status===BookingStatus.PENDING).length, icon: Calendar, color: 'text-brand-400', bg: 'bg-brand-500/10' },
-        { title: 'إيراد اليوم', value: formatCurrency(finance.filter((f:any)=>f.type==='INCOME' && new Date(f.date).toDateString() === today).reduce((a:any,b:any)=>a+b.amount,0)), icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-        { title: 'تحت التنظيف', value: dresses.filter((d:any)=>d.status===DressStatus.CLEANING).length, icon: Droplets, color: 'text-orange-400', bg: 'bg-orange-500/10' },
-    ];
-
+const PrePrintedInvoice = ({ data, type, onClose }: {data: any, type: string, onClose: () => void}) => {
     return (
-        <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-                {stats.map((s, i) => (
-                    <div key={i} className={CARD_CLASS}>
-                        <div className={`w-10 h-10 rounded-xl ${s.bg} flex items-center justify-center mb-3 ${s.color}`}>
-                            <s.icon size={20} />
-                        </div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase">{s.title}</p>
-                        <p className="text-lg font-bold text-white mt-1">{s.value}</p>
-                    </div>
-                ))}
+        <div className="fixed inset-0 z-[200] bg-white text-black flex flex-col overflow-y-auto" dir="rtl">
+            <div className="p-4 bg-gray-100 flex justify-between items-center print:hidden border-b">
+                <h2 className="font-bold text-lg">معاينة المستند</h2>
+                <div className="flex gap-2">
+                    <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded font-bold"><Printer size={16}/> طباعة</button>
+                    <button onClick={onClose} className="px-4 py-2 bg-gray-300 rounded font-bold">إغلاق</button>
+                </div>
             </div>
-            <div className={CARD_CLASS}>
-                <h3 className="font-bold text-white mb-4 flex items-center gap-2"><Clock size={18} className="text-brand-400"/> آخر النشاطات</h3>
-                <div className="space-y-3">
-                    {bookings.slice(0, 3).map((b:any) => (
-                        <div key={b.id} className="p-3 bg-slate-800/30 rounded-xl border border-slate-800 flex justify-between items-center">
-                            <div>
-                                <p className="text-sm font-bold text-white">{b.customerName}</p>
-                                <p className="text-[10px] text-slate-500">حجز فستان: {b.dressName}</p>
-                            </div>
-                            <span className={BADGE_CLASS + " " + getStatusColor(b.status)}>{b.status}</span>
+            <div className="p-10 max-w-[210mm] mx-auto w-full bg-white min-h-screen font-serif">
+                <div className="text-center border-b-2 border-black pb-6 mb-8">
+                    <h1 className="text-4xl font-bold mb-2">إيلاف لفساتين الزفاف</h1>
+                    <p className="text-gray-600">Elaf For Wedding Dress</p>
+                    <p className="mt-2 font-bold">{type === 'BOOKING' ? 'عقد إيجار' : type === 'SALE' ? 'عقد تفصيل' : 'سند استلام'}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-8 text-sm mb-10">
+                    <div className="space-y-2">
+                        <p><span className="font-bold">العميلة:</span> {data.customerName || data.brideName}</p>
+                        <p><span className="font-bold">الهاتف:</span> {data.customerPhone || data.bridePhone}</p>
+                        <p><span className="font-bold">التاريخ:</span> {formatDate(new Date().toISOString())}</p>
+                    </div>
+                    <div className="space-y-2 text-left">
+                        <p><span className="font-bold">كود الفستان:</span> {data.factoryCode || data.dressId || '-'}</p>
+                        <p><span className="font-bold">موعد المناسبة:</span> {formatDate(data.eventDate || data.expectedDeliveryDate)}</p>
+                    </div>
+                </div>
+                {type === 'ORDER_DETAILS' && data.measurements && (
+                    <div className="mb-10">
+                        <h3 className="font-bold border-b border-black mb-4">جدول المقاسات</h3>
+                        <div className="grid grid-cols-3 gap-4 text-xs">
+                            {Object.entries(data.measurements).map(([k, v]) => (
+                                <p key={k}>- {k}: <b>{String(v)}</b></p>
+                            ))}
                         </div>
-                    ))}
-                    {bookings.length === 0 && <p className="text-center py-6 text-slate-600 text-xs italic">لا توجد حركات مسجلة</p>}
+                    </div>
+                )}
+                <div className="border-2 border-black p-4 rounded mb-10">
+                    <p className="font-bold mb-2">التفاصيل المالية:</p>
+                    <p>الإجمالي: {formatCurrency(data.agreedRentalPrice || data.sellPrice)}</p>
+                    <p>المدفوع: {formatCurrency(data.paidDeposit || data.deposit)}</p>
+                    <p className="font-bold text-lg">المتبقي: {formatCurrency(data.remainingToPay || data.remainingFromBride)}</p>
+                </div>
+                <div className="mt-20 flex justify-between px-10">
+                    <div className="text-center border-t border-black pt-2 w-32">توقيع العروس</div>
+                    <div className="text-center border-t border-black pt-2 w-32">ختم المحل</div>
                 </div>
             </div>
         </div>
     );
 };
 
-// --- Section 2: Dresses (Rent) ---
-const DressManager = ({ dresses, onAdd, onUpdate, onDelete }: any) => {
-    const [search, setSearch] = useState('');
-    const [isModalOpen, setModalOpen] = useState(false);
-    const [editing, setEditing] = useState<any>(null);
-    const filtered = dresses.filter((d:any) => d.name.toLowerCase().includes(search.toLowerCase()) || d.style.toLowerCase().includes(search.toLowerCase()));
+// --- Manager Components ---
+
+const HomeManager = ({ dresses, bookings, finance }: any) => {
+    const today = new Date().toDateString();
+    const stats = [
+        { title: 'متاح للإيجار', value: dresses.filter((d:any)=>d.status===DressStatus.AVAILABLE).length, icon: Shirt, color: 'text-green-400', bg: 'bg-green-500/10' },
+        { title: 'فساتين مؤجرة', value: bookings.filter((b:any)=>b.status===BookingStatus.ACTIVE).length, icon: Calendar, color: 'text-brand-400', bg: 'bg-brand-500/10' },
+        { title: 'إيراد اليوم', value: formatCurrency(finance.filter((f:any)=>f.type==='INCOME' && new Date(f.date).toDateString() === today).reduce((a:any,b:any)=>a+b.amount,0)), icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+        { title: 'تنبيهات الغسيل', value: dresses.filter((d:any)=>d.status===DressStatus.CLEANING).length, icon: Droplets, color: 'text-orange-400', bg: 'bg-orange-500/10' },
+    ];
 
     return (
-        <div className="space-y-6">
-            <div className="flex gap-3">
-                <div className="flex-1 relative">
-                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                    <input className="w-full bg-slate-900 border border-slate-800 rounded-xl pr-10 pl-4 py-2.5 text-sm" placeholder="ابحث..." value={search} onChange={e=>setSearch(e.target.value)} />
-                </div>
-                <button onClick={()=>{setEditing(null); setModalOpen(true)}} className="bg-brand-600 w-12 h-12 rounded-xl flex items-center justify-center text-white"><Plus/></button>
+        <div className="space-y-6 animate-fade-in">
+            <div className="grid grid-cols-2 gap-4">
+                {stats.map((s, i) => (
+                    <div key={i} className={CARD_CLASS}>
+                        <div className={`w-10 h-10 rounded-xl ${s.bg} flex items-center justify-center mb-3 ${s.color}`}><s.icon size={20} /></div>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase">{s.title}</p>
+                        <p className="text-lg font-bold text-white mt-1">{s.value}</p>
+                    </div>
+                ))}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className={CARD_CLASS}>
+                <h3 className="font-bold text-white mb-4 flex items-center gap-2"><Clock size={18} className="text-brand-400"/> آخر النشاطات السحابية</h3>
+                <div className="space-y-3">
+                    {bookings.slice(0, 4).map((b:any) => (
+                        <div key={b.id} className="p-3 bg-slate-800/30 rounded-xl border border-slate-800 flex justify-between items-center group-hover:bg-slate-800/50 transition-colors">
+                            <div><p className="text-sm font-bold text-white">{b.customerName}</p><p className="text-[10px] text-slate-500">{b.dressName}</p></div>
+                            <span className={BADGE_CLASS + " " + getStatusColor(b.status)}>{b.status}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const RentalManager = ({ dresses, onAdd, onUpdate, onDelete }: any) => {
+    const [view, setView] = useState<'ALL'|'ARCHIVED'|'ANALYTICS'>('ALL');
+    const [isModal, setModal] = useState(false);
+    const [editItem, setEditItem] = useState<any>(null);
+
+    const filtered = dresses.filter((d:any) => view==='ARCHIVED' ? d.status===DressStatus.ARCHIVED : d.status!==DressStatus.ARCHIVED);
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+            <div className="flex gap-2 bg-slate-900/50 p-1.5 rounded-2xl border border-slate-800">
+                <button onClick={()=>setView('ALL')} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${view==='ALL'?'bg-brand-600 text-white shadow-lg':'text-slate-500'}`}>المخزون</button>
+                <button onClick={()=>setView('ARCHIVED')} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${view==='ARCHIVED'?'bg-brand-600 text-white shadow-lg':'text-slate-500'}`}>الأرشيف</button>
+            </div>
+            <button onClick={()=>{setEditItem(null); setModal(true)}} className={BTN_PRIMARY}><Plus size={18}/> إضافة فستان جديد</button>
+            <div className="grid grid-cols-1 gap-4">
                 {filtered.map((d:any) => (
                     <div key={d.id} className={CARD_CLASS}>
-                        <div className="flex justify-between mb-4">
+                        <div className="flex justify-between items-start mb-4">
                             <div><h4 className="font-bold text-white">{d.name}</h4><p className="text-xs text-slate-500">{d.style}</p></div>
                             <span className={BADGE_CLASS + " " + getStatusColor(d.status)}>{d.status}</span>
                         </div>
-                        <div className="flex justify-between items-end">
+                        <div className="flex justify-between items-center pt-3 border-t border-slate-800">
                             <p className="text-brand-400 font-bold">{formatCurrency(d.rentalPrice)}</p>
                             <div className="flex gap-2">
-                                <button onClick={()=>{setEditing(d); setModalOpen(true)}} className="p-2 bg-slate-800 rounded-lg text-slate-400"><Edit size={16}/></button>
-                                <button onClick={()=>onDelete(d.id)} className="p-2 bg-red-950/20 rounded-lg text-red-500"><Trash2 size={16}/></button>
+                                <button onClick={()=>{setEditItem(d); setModal(true)}} className="p-2.5 bg-slate-800 rounded-xl text-slate-400"><Edit size={16}/></button>
+                                {view === 'ALL' ? (
+                                    <button onClick={()=>onUpdate(d.id, {status: DressStatus.ARCHIVED})} className="p-2.5 bg-red-950/20 rounded-xl text-red-500"><Trash2 size={16}/></button>
+                                ) : (
+                                    <button onClick={()=>onUpdate(d.id, {status: DressStatus.AVAILABLE})} className="p-2.5 bg-green-950/20 rounded-xl text-green-500"><Undo2 size={16}/></button>
+                                )}
                             </div>
                         </div>
                     </div>
                 ))}
             </div>
-            {isModalOpen && (
-                <Modal title={editing ? "تعديل فستان" : "إضافة فستان"} onClose={()=>setModalOpen(false)}>
+            {isModal && (
+                <Modal title={editItem ? "تعديل فستان" : "فستان جديد"} onClose={()=>setModal(false)}>
                     <form onSubmit={async (e:any)=>{
                         e.preventDefault();
                         const fd = new FormData(e.target);
                         const data = {
-                            name: fd.get('name'), style: fd.get('style'), rentalPrice: Number(fd.get('price')), 
+                            name: fd.get('name'), style: fd.get('style'), rentalPrice: Number(fd.get('price')),
                             status: fd.get('status'), type: DressType.RENT, updatedAt: new Date().toISOString()
                         };
-                        editing ? await onUpdate(editing.id, data) : await onAdd(data);
-                        setModalOpen(false);
+                        editItem ? await onUpdate(editItem.id, data) : await onAdd(data);
+                        setModal(false);
                     }} className="space-y-4">
-                        <input name="name" defaultValue={editing?.name} placeholder="اسم الفستان" className={INPUT_CLASS} required />
-                        <input name="style" defaultValue={editing?.style} placeholder="الموديل" className={INPUT_CLASS} required />
-                        <input name="price" type="number" defaultValue={editing?.rentalPrice} placeholder="سعر الإيجار" className={INPUT_CLASS} required />
-                        <select name="status" defaultValue={editing?.status || DressStatus.AVAILABLE} className={INPUT_CLASS}>
+                        <input name="name" defaultValue={editItem?.name} placeholder="اسم الفستان" className={INPUT_CLASS} required />
+                        <input name="style" defaultValue={editItem?.style} placeholder="الموديل" className={INPUT_CLASS} />
+                        <input name="price" type="number" defaultValue={editItem?.rentalPrice} placeholder="سعر الإيجار" className={INPUT_CLASS} required />
+                        <select name="status" defaultValue={editItem?.status || DressStatus.AVAILABLE} className={INPUT_CLASS}>
                             {Object.values(DressStatus).map(s=><option key={s} value={s}>{s}</option>)}
                         </select>
-                        <button className={BTN_PRIMARY}>حفظ في السحابة</button>
+                        <button className={BTN_PRIMARY}>حفظ</button>
                     </form>
                 </Modal>
             )}
@@ -164,43 +219,114 @@ const DressManager = ({ dresses, onAdd, onUpdate, onDelete }: any) => {
     );
 };
 
-// --- Section 3: Sale Dresses (New Custom Orders) ---
-const SaleManager = ({ orders, onAdd, onUpdate }: any) => {
-    const [isModalOpen, setModalOpen] = useState(false);
+const BookingManager = ({ bookings, dresses, onAdd, onUpdate, onPrint }: any) => {
+    const [isModal, setModal] = useState(false);
+    const [editItem, setEditItem] = useState<any>(null);
+
     return (
-        <div className="space-y-6">
-            <button onClick={()=>setModalOpen(true)} className={BTN_PRIMARY}><ShoppingBag size={18}/> تسجيل طلب تفصيل/بيع جديد</button>
+        <div className="space-y-6 animate-fade-in">
+            <button onClick={()=>{setEditItem(null); setModal(true)}} className={BTN_PRIMARY}><Plus size={18}/> حجز إيجار جديد</button>
             <div className="space-y-4">
-                {orders.map((o:any)=>(
-                    <div key={o.id} className={CARD_CLASS}>
+                {bookings.filter((b:any)=>b.status!==BookingStatus.CANCELLED).map((b:any)=>(
+                    <div key={b.id} className={CARD_CLASS}>
                         <div className="flex justify-between mb-3">
-                            <h4 className="font-bold text-white">{o.brideName}</h4>
-                            <span className={BADGE_CLASS + " " + getStatusColor(o.status)}>{o.status}</span>
+                            <div><h4 className="font-bold text-white">{b.customerName}</h4><p className="text-[10px] text-slate-500">فستان: {b.dressName}</p></div>
+                            <span className={BADGE_CLASS + " " + getStatusColor(b.status)}>{b.status}</span>
                         </div>
-                        <p className="text-xs text-slate-400 mb-4">{o.dressDescription}</p>
-                        <div className="grid grid-cols-2 gap-2 text-xs border-t border-slate-800 pt-3">
-                            <div className="text-slate-500">المتبقي: <span className="text-red-400 font-bold">{formatCurrency(o.remainingFromBride)}</span></div>
-                            <div className="text-slate-500">التسليم: <span className="text-brand-400 font-bold">{formatDate(o.expectedDeliveryDate)}</span></div>
+                        <div className="flex justify-between items-end">
+                            <div className="text-xs text-slate-400">المناسبة: <span className="text-brand-400 font-bold">{formatDate(b.eventDate)}</span></div>
+                            <div className="flex gap-2">
+                                <button onClick={()=>onPrint(b, 'BOOKING')} className="p-2 bg-slate-800 rounded-lg text-brand-300"><Printer size={16}/></button>
+                                <button onClick={()=>{setEditItem(b); setModal(true)}} className="p-2 bg-slate-800 rounded-lg text-slate-400"><Edit size={16}/></button>
+                            </div>
                         </div>
                     </div>
                 ))}
             </div>
-            {isModalOpen && (
-                <Modal title="طلب تفصيل جديد" onClose={()=>setModalOpen(false)}>
+            {isModal && (
+                <Modal title={editItem ? "تعديل حجز" : "حجز جديد"} onClose={()=>setModal(false)}>
                     <form onSubmit={async (e:any)=>{
                         e.preventDefault();
                         const fd = new FormData(e.target);
+                        const price = Number(fd.get('price'));
+                        const dep = Number(fd.get('deposit'));
+                        const dress = dresses.find((d:any)=>d.id===fd.get('dressId'));
+                        const data = {
+                            customerName: fd.get('name'), customerPhone: fd.get('phone'),
+                            dressId: fd.get('dressId'), dressName: dress?.name || '',
+                            eventDate: fd.get('date'), agreedRentalPrice: price, paidDeposit: dep,
+                            remainingToPay: price - dep, status: BookingStatus.PENDING,
+                            createdAt: new Date().toISOString()
+                        };
+                        editItem ? await onUpdate(editItem.id, data) : await onAdd(data);
+                        setModal(false);
+                    }} className="space-y-4">
+                        <input name="name" defaultValue={editItem?.customerName} placeholder="اسم العروس" className={INPUT_CLASS} required />
+                        <input name="phone" defaultValue={editItem?.customerPhone} placeholder="رقم الهاتف" className={INPUT_CLASS} required />
+                        <select name="dressId" defaultValue={editItem?.dressId} className={INPUT_CLASS} required>
+                            <option value="">اختر الفستان...</option>
+                            {dresses.filter((d:any)=>d.status===DressStatus.AVAILABLE).map((d:any)=>(
+                                <option key={d.id} value={d.id}>{d.name} ({d.style})</option>
+                            ))}
+                        </select>
+                        <input name="date" type="date" defaultValue={toInputDate(editItem?.eventDate)} className={INPUT_CLASS} required />
+                        <div className="grid grid-cols-2 gap-4">
+                            <input name="price" type="number" defaultValue={editItem?.agreedRentalPrice} placeholder="سعر الإيجار" className={INPUT_CLASS} required />
+                            <input name="deposit" type="number" defaultValue={editItem?.paidDeposit} placeholder="العربون" className={INPUT_CLASS} required />
+                        </div>
+                        <button className={BTN_PRIMARY}>تأكيد الحجز سحابياً</button>
+                    </form>
+                </Modal>
+            )}
+        </div>
+    );
+};
+
+const SalesManager = ({ orders, onAdd, onUpdate, onPrint }: any) => {
+    const [isModal, setModal] = useState(false);
+    const [measureModal, setMeasureModal] = useState<{show:boolean, order:any}>({show:false, order:null});
+
+    return (
+        <div className="space-y-6 animate-fade-in">
+            <button onClick={()=>setModal(true)} className={BTN_PRIMARY}><ShoppingBag size={18}/> طلب تفصيل (بيع) جديد</button>
+            <div className="space-y-4">
+                {orders.map((o:any)=>(
+                    <div key={o.id} className={CARD_CLASS}>
+                        <div className="flex justify-between mb-3">
+                            <div><h4 className="font-bold text-white">{o.brideName}</h4><p className="text-[10px] text-slate-400">كود: {o.factoryCode}</p></div>
+                            <span className={BADGE_CLASS + " " + getStatusColor(o.status)}>{o.status}</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mb-4">{o.dressDescription}</p>
+                        <div className="flex justify-between items-center pt-3 border-t border-slate-800">
+                            <div className="text-[10px] text-red-400">المتبقي: {formatCurrency(o.remainingFromBride)}</div>
+                            <div className="flex gap-2">
+                                <button onClick={()=>setMeasureModal({show:true, order:o})} className="p-2 bg-slate-800 rounded-lg text-brand-400"><Scissors size={16}/></button>
+                                <button onClick={()=>onPrint(o, 'ORDER_DETAILS')} className="p-2 bg-slate-800 rounded-lg text-slate-400"><Printer size={16}/></button>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+            {isModal && (
+                <Modal title="طلب تفصيل جديد" onClose={()=>setModal(false)}>
+                    <form onSubmit={async (e:any)=>{
+                        e.preventDefault();
+                        const fd = new FormData(e.target);
+                        const price = Number(fd.get('price'));
+                        const dep = Number(fd.get('deposit'));
                         await onAdd({
-                            brideName: fd.get('name'), bridePhone: fd.get('phone'), dressDescription: fd.get('desc'),
-                            sellPrice: Number(fd.get('price')), deposit: Number(fd.get('deposit')),
-                            remainingFromBride: Number(fd.get('price')) - Number(fd.get('deposit')),
-                            status: SaleStatus.DESIGNING, expectedDeliveryDate: fd.get('date'), createdAt: new Date().toISOString()
+                            brideName: fd.get('name'), bridePhone: fd.get('phone'),
+                            factoryCode: fd.get('code'), dressDescription: fd.get('desc'),
+                            sellPrice: price, deposit: dep, remainingFromBride: price - dep,
+                            status: SaleStatus.DESIGNING, expectedDeliveryDate: fd.get('date'),
+                            createdAt: new Date().toISOString()
                         });
-                        setModalOpen(false);
+                        setModal(false);
                     }} className="space-y-4">
                         <input name="name" placeholder="اسم العروس" className={INPUT_CLASS} required />
                         <input name="phone" placeholder="رقم الهاتف" className={INPUT_CLASS} required />
-                        <textarea name="desc" placeholder="وصف الفستان والموديل" className={INPUT_CLASS + " h-20"} required />
+                        <input name="code" placeholder="كود الموديل" className={INPUT_CLASS} required />
+                        <textarea name="desc" placeholder="وصف الفستان" className={INPUT_CLASS + " h-20"} required />
                         <div className="grid grid-cols-2 gap-4">
                             <input name="price" type="number" placeholder="سعر البيع" className={INPUT_CLASS} required />
                             <input name="deposit" type="number" placeholder="العربون" className={INPUT_CLASS} required />
@@ -210,142 +336,111 @@ const SaleManager = ({ orders, onAdd, onUpdate }: any) => {
                     </form>
                 </Modal>
             )}
-        </div>
-    );
-};
-
-// --- Section 4: Factory Management ---
-const FactoryManager = ({ orders }: any) => {
-    return (
-        <div className="space-y-6">
-            <h3 className="text-lg font-bold flex items-center gap-2"><Factory className="text-brand-500"/> تعاملات المصانع</h3>
-            {orders.length === 0 ? (
-                <div className="text-center py-20 bg-slate-900/20 rounded-3xl border border-dashed border-slate-800">
-                    <Loader2 className="mx-auto mb-4 text-slate-700 animate-spin" />
-                    <p className="text-slate-500 text-sm">لا توجد طلبيات للمصنع حالياً</p>
-                </div>
-            ) : (
-                <div className="space-y-4">
-                    {orders.map((o:any)=>(
-                        <div key={o.id} className={CARD_CLASS}>
-                            <div className="flex justify-between items-center mb-3">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase">كود المصنع: {o.factoryCode || 'بدون كود'}</span>
-                                <span className={BADGE_CLASS + " border-brand-500/30 text-brand-400"}>{o.factoryStatus || 'غير مدفوع'}</span>
-                            </div>
-                            <h4 className="font-bold text-white mb-2">{o.brideName} - طلب تفصيل</h4>
-                            <div className="p-3 bg-slate-800/40 rounded-xl flex justify-between items-center">
-                                <span className="text-xs text-slate-400">سعر المصنع</span>
-                                <span className="font-bold text-white">{formatCurrency(o.factoryPrice)}</span>
-                            </div>
+            {measureModal.show && (
+                <Modal title={`مقاسات العروس: ${measureModal.order.brideName}`} size="lg" onClose={()=>setMeasureModal({show:false, order:null})}>
+                    <form onSubmit={async (e:any)=>{
+                        e.preventDefault();
+                        const fd = new FormData(e.target);
+                        const measurements = Object.fromEntries(fd.entries());
+                        await onUpdate(measureModal.order.id, { measurements });
+                        setMeasureModal({show:false, order:null});
+                    }} className="space-y-4">
+                        <div className="grid grid-cols-3 gap-3">
+                            {['صدر', 'خصر', 'هانش', 'طول كلي', 'كتف', 'كم'].map(m=>(
+                                <div key={m}><label className="text-[10px] text-slate-500 mb-1 block">{m}</label><input name={m} defaultValue={measureModal.order?.measurements?.[m]} className={INPUT_CLASS} /></div>
+                            ))}
                         </div>
-                    ))}
-                </div>
+                        <textarea name="notes" placeholder="ملاحظات خياطة إضافية" className={INPUT_CLASS + " h-24"} />
+                        <button className={BTN_PRIMARY}>حفظ المقاسات</button>
+                    </form>
+                </Modal>
             )}
         </div>
     );
 };
 
-// --- Section 5: Delivery & Returns ---
-const DeliveryManager = ({ bookings, onUpdate }: any) => {
-    const activeOnes = bookings.filter((b:any) => [BookingStatus.PENDING, BookingStatus.ACTIVE].includes(b.status));
-    return (
-        <div className="space-y-6">
-            <h3 className="text-lg font-bold flex items-center gap-2"><Truck className="text-brand-500"/> استلام وتسليم</h3>
-            <div className="space-y-4">
-                {activeOnes.map((b:any)=>(
-                    <div key={b.id} className={CARD_CLASS}>
-                        <div className="flex justify-between mb-3">
-                            <h4 className="font-bold text-white">{b.customerName}</h4>
-                            <span className={BADGE_CLASS + " " + getStatusColor(b.status)}>{b.status}</span>
-                        </div>
-                        <p className="text-xs text-slate-400 mb-4">فستان: {b.dressName} | التاريخ: {formatDate(b.eventDate)}</p>
-                        <div className="flex gap-2">
-                            {b.status === BookingStatus.PENDING ? (
-                                <button onClick={()=>onUpdate(b.id, {status: BookingStatus.ACTIVE})} className="flex-1 py-3 bg-brand-600 rounded-xl font-bold text-xs">تأكيد التسليم للعروس</button>
-                            ) : (
-                                <button onClick={()=>onUpdate(b.id, {status: BookingStatus.COMPLETED})} className="flex-1 py-3 bg-emerald-600 rounded-xl font-bold text-xs">تأكيد الإرجاع للمحل</button>
-                            )}
-                        </div>
-                    </div>
-                ))}
-                {activeOnes.length === 0 && <p className="text-center py-20 text-slate-600 italic">لا توجد عمليات استلام قريبة</p>}
-            </div>
-        </div>
-    );
-};
+const FinanceManager = ({ finance, onAdd }: any) => {
+    const [isModal, setModal] = useState(false);
+    const months = ['يناير', 'فبراير', 'مارس', 'ابريل', 'مايو', 'يونيو'];
+    const chartData = months.map(m => ({ name: m, income: Math.random()*5000 + 2000, expense: Math.random()*3000 + 1000 }));
 
-// --- Section 6: Customer List ---
-const CustomerManager = ({ customers }: any) => {
     return (
-        <div className="space-y-6">
-            <div className="relative">
-                <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                <input className="w-full bg-slate-900 border border-slate-800 rounded-xl pr-10 pl-4 py-3 text-sm" placeholder="ابحث عن عميلة..." />
+        <div className="space-y-6 animate-fade-in">
+            <div className={CARD_CLASS + " h-64"}>
+                <h3 className="font-bold mb-4">تحليل التدفق المالي</h3>
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                        <XAxis dataKey="name" stroke="#64748b" fontSize={10} />
+                        <YAxis stroke="#64748b" fontSize={10} />
+                        <RechartsTooltip contentStyle={{backgroundColor: '#0f172a', border: 'none'}} />
+                        <Bar dataKey="income" name="إيرادات" fill="#d946ef" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="expense" name="مصاريف" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                </ResponsiveContainer>
             </div>
+            <button onClick={()=>setModal(true)} className={BTN_PRIMARY}><Plus size={18}/> تسجيل حركة مالية</button>
             <div className="space-y-3">
-                {customers.map((c:any)=>(
-                    <div key={c.id} className={CARD_CLASS + " flex items-center justify-between"}>
-                        <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-brand-500 font-bold">{c.name[0]}</div>
-                            <div>
-                                <h4 className="font-bold text-white text-sm">{c.name}</h4>
-                                <p className="text-[10px] text-slate-500">{c.phone}</p>
-                            </div>
-                        </div>
-                        <a href={`tel:${c.phone}`} className="p-3 bg-brand-600/10 text-brand-400 rounded-full"><Phone size={18}/></a>
-                    </div>
-                ))}
-                {customers.length === 0 && <p className="text-center py-20 text-slate-600 italic">سجل العملاء فارغ</p>}
-            </div>
-        </div>
-    );
-};
-
-// --- Section 7: Audit Logs ---
-const LogManager = ({ logs }: any) => {
-    return (
-        <div className="space-y-4">
-            <h3 className="text-lg font-bold">سجل العمليات</h3>
-            <div className="space-y-3">
-                {logs.slice(0, 20).map((l:any)=>(
-                    <div key={l.id} className="p-4 bg-slate-900/40 border border-slate-800 rounded-2xl flex gap-4">
-                        <div className="text-brand-500 pt-1"><Clock size={16}/></div>
-                        <div>
-                            <p className="text-sm font-bold text-white">{l.action}</p>
-                            <p className="text-[10px] text-slate-500">{l.username} • {formatDate(l.timestamp)}</p>
-                        </div>
+                {finance.slice(0, 10).map((f:any)=>(
+                    <div key={f.id} className="p-4 bg-slate-900/40 border border-slate-800 rounded-2xl flex justify-between items-center">
+                        <div><p className="text-sm font-bold text-white">{f.category}</p><p className="text-[10px] text-slate-500">{formatDate(f.date)}</p></div>
+                        <p className={`font-bold ${f.type==='INCOME'?'text-emerald-400':'text-red-400'}`}>{f.type==='INCOME'?'+':'-'} {formatCurrency(f.amount)}</p>
                     </div>
                 ))}
             </div>
+            {isModal && (
+                <Modal title="حركة مالية جديدة" onClose={()=>setModal(false)}>
+                    <form onSubmit={async (e:any)=>{
+                        e.preventDefault();
+                        const fd = new FormData(e.target);
+                        await onAdd({
+                            type: fd.get('type'), category: fd.get('cat'), 
+                            amount: Number(fd.get('amount')), date: new Date().toISOString(),
+                            notes: fd.get('notes')
+                        });
+                        setModal(false);
+                    }} className="space-y-4">
+                        <select name="type" className={INPUT_CLASS}><option value="INCOME">إيراد (+)</option><option value="EXPENSE">مصروف (-)</option></select>
+                        <input name="cat" placeholder="البند (مثلاً: تنظيف فستان، فاتورة كهرباء)" className={INPUT_CLASS} required />
+                        <input name="amount" type="number" placeholder="المبلغ" className={INPUT_CLASS} required />
+                        <textarea name="notes" placeholder="ملاحظات" className={INPUT_CLASS} />
+                        <button className={BTN_PRIMARY}>حفظ الحركة</button>
+                    </form>
+                </Modal>
+            )}
         </div>
     );
 };
-
-/* Defined ToastContext to fix missing reference errors in App return */
-// --- Contexts ---
-const ToastContext = React.createContext<{
-    addToast: (msg: string, type?: 'success' | 'error') => void;
-}>({
-    addToast: () => {},
-});
 
 // --- Main App Component ---
+
 const App = () => {
-    if (!isConfigured) return <div className="p-8 text-center text-red-500">خطأ في إعدادات السحابة.</div>;
+    if (!isConfigured) return <div className="p-8 text-center text-red-500">Firebase configuration error.</div>;
 
     const [user, setUser] = useState<UserType|null>(null);
     const [tab, setTab] = useState('home');
     const [loading, setLoading] = useState(true);
-    const [isMoreMenuOpen, setMoreMenuOpen] = useState(false);
+    const [isMoreMenu, setMoreMenu] = useState(false);
     const [toasts, setToasts] = useState<any[]>([]);
+    const [printData, setPrintData] = useState<any>(null);
 
     const [dresses, setDresses] = useState<Dress[]>([]);
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [finance, setFinance] = useState<FinanceRecord[]>([]);
-    const [customers, setCustomers] = useState<Customer[]>([]);
     const [orders, setOrders] = useState<SaleOrder[]>([]);
-    const [logs, setLogs] = useState<AuditLog[]>([]);
     const [users, setUsers] = useState<UserType[]>([]);
+
+    useEffect(() => {
+        const unsubs = [
+            cloudDb.subscribe(cloudDb.COLLS.DRESSES, setDresses),
+            cloudDb.subscribe(cloudDb.COLLS.BOOKINGS, setBookings),
+            cloudDb.subscribe(cloudDb.COLLS.FINANCE, setFinance),
+            cloudDb.subscribe(cloudDb.COLLS.SALES, setOrders),
+            cloudDb.subscribe(cloudDb.COLLS.USERS, setUsers),
+        ];
+        setTimeout(() => setLoading(false), 1500);
+        return () => unsubs.forEach(u => u());
+    }, []);
 
     const addToast = (msg: string, type: 'success'|'error' = 'success') => {
         const id = Math.random().toString();
@@ -353,41 +448,29 @@ const App = () => {
         setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
     };
 
-    useEffect(() => {
-        const unsubs = [
-            cloudDb.subscribe(cloudDb.COLLS.DRESSES, setDresses),
-            cloudDb.subscribe(cloudDb.COLLS.BOOKINGS, setBookings),
-            cloudDb.subscribe(cloudDb.COLLS.FINANCE, setFinance),
-            cloudDb.subscribe(cloudDb.COLLS.CUSTOMERS, setCustomers),
-            cloudDb.subscribe(cloudDb.COLLS.SALES, setOrders),
-            cloudDb.subscribe(cloudDb.COLLS.LOGS, setLogs),
-            cloudDb.subscribe(cloudDb.COLLS.USERS, setUsers),
-        ];
-        setTimeout(() => setLoading(false), 1500);
-        return () => unsubs.forEach(u => u());
-    }, []);
-
-    const handleWipe = async (type: string) => {
+    const handleWipe = async () => {
+        if (!confirm("سيتم مسح كافة البيانات بشكل نهائي! هل أنت متأكد؟")) return;
         setLoading(true);
         try {
-            if (type === 'all' || type === 'bookings') for (const b of bookings) await cloudDb.delete(cloudDb.COLLS.BOOKINGS, b.id);
-            if (type === 'all' || type === 'finance') for (const f of finance) await cloudDb.delete(cloudDb.COLLS.FINANCE, f.id);
-            if (type === 'all') for (const d of dresses) await cloudDb.delete(cloudDb.COLLS.DRESSES, d.id);
-            addToast("تم تصفير البيانات المحددة", "success");
+            for (const d of dresses) await cloudDb.delete(cloudDb.COLLS.DRESSES, d.id);
+            for (const b of bookings) await cloudDb.delete(cloudDb.COLLS.BOOKINGS, b.id);
+            for (const f of finance) await cloudDb.delete(cloudDb.COLLS.FINANCE, f.id);
+            for (const o of orders) await cloudDb.delete(cloudDb.COLLS.SALES, o.id);
+            addToast("تم تصفير النظام بنجاح");
         } catch (e) { addToast("خطأ في العملية", "error"); }
         setLoading(false);
     };
 
     if (loading) return (
         <div className="h-screen flex flex-col items-center justify-center bg-slate-950">
-            <div className="w-12 h-12 border-4 border-brand-500/20 border-t-brand-500 rounded-full animate-spin mb-4"></div>
-            <p className="text-slate-500 text-xs font-bold animate-pulse">مزامنة البيانات السحابية...</p>
+            <div className="w-10 h-10 border-4 border-brand-500/20 border-t-brand-500 rounded-full animate-spin mb-4"></div>
+            <p className="text-slate-500 text-[10px] font-bold tracking-widest animate-pulse">مزامنة سحابية آمنة...</p>
         </div>
     );
 
     if (!user) return (
         <div className="min-h-screen flex items-center justify-center bg-slate-950 p-6">
-            <div className="w-full max-w-sm bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl">
+            <div className="w-full max-w-sm bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-8 rounded-[2.5rem] shadow-2xl">
                 <div className="text-center mb-10">
                     <div className="w-16 h-16 bg-brand-600 rounded-2xl mx-auto mb-4 flex items-center justify-center text-white"><Shirt size={30} /></div>
                     <h1 className="text-2xl font-bold text-white">إيلاف للزفاف</h1>
@@ -410,7 +493,6 @@ const App = () => {
         <ToastContext.Provider value={{ addToast }}>
             <div className="flex flex-col h-screen bg-slate-950 text-slate-100 font-sans" dir="rtl">
                 
-                {/* Header */}
                 <header className="fixed top-0 inset-x-0 h-16 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-6 z-[60]">
                     <div className="flex items-center gap-2 font-bold"><div className="p-1.5 bg-brand-600 rounded-lg"><Shirt size={16}/></div> إيلاف</div>
                     <div className="flex items-center gap-4">
@@ -419,48 +501,39 @@ const App = () => {
                     </div>
                 </header>
 
-                {/* Content */}
                 <main className="flex-1 overflow-y-auto pt-20 pb-24 px-4">
                     <div className="max-w-xl mx-auto">
-                        <div className="mb-6">
-                            <h2 className="text-xl font-bold">{NAV_ITEMS.find(i=>i.id===tab)?.label}</h2>
-                        </div>
-
                         {tab === 'home' && <HomeManager dresses={dresses} bookings={bookings} finance={finance} />}
-                        {tab === 'dresses_rent' && <DressManager dresses={dresses} onAdd={(d:any)=>cloudDb.add(cloudDb.COLLS.DRESSES, d)} onUpdate={(id:string, d:any)=>cloudDb.update(cloudDb.COLLS.DRESSES, id, d)} onDelete={(id:string)=>cloudDb.delete(cloudDb.COLLS.DRESSES, id)} />}
-                        {tab === 'dresses_sale' && <SaleManager orders={orders} onAdd={(o:any)=>cloudDb.add(cloudDb.COLLS.SALES, o)} onUpdate={(id:string, o:any)=>cloudDb.update(cloudDb.COLLS.SALES, id, o)} />}
-                        {tab === 'factory' && <FactoryManager orders={orders} />}
-                        {tab === 'delivery' && <DeliveryManager bookings={bookings} onUpdate={(id:string, d:any)=>cloudDb.update(cloudDb.COLLS.BOOKINGS, id, d)} />}
-                        {tab === 'customers' && <CustomerManager customers={customers} />}
-                        {tab === 'logs' && <LogManager logs={logs} />}
-                        {tab === 'settings' && <div className="space-y-6">
-                            <div className={CARD_CLASS}>
-                                <h3 className="font-bold mb-4">إعدادات النظام</h3>
-                                <p className="text-xs text-slate-500">الإصدار 1.2.0 السحابي</p>
+                        {tab === 'dresses_rent' && <RentalManager dresses={dresses} onAdd={(d:any)=>cloudDb.add(cloudDb.COLLS.DRESSES, d)} onUpdate={(id:any, d:any)=>cloudDb.update(cloudDb.COLLS.DRESSES, id, d)} />}
+                        {tab === 'bookings' && <BookingManager bookings={bookings} dresses={dresses} onAdd={(b:any)=>cloudDb.add(cloudDb.COLLS.BOOKINGS, b)} onUpdate={(id:any, b:any)=>cloudDb.update(cloudDb.COLLS.BOOKINGS, id, b)} onPrint={(d:any, t:any)=>setPrintData({data:d, type:t})} />}
+                        {tab === 'dresses_sale' && <SalesManager orders={orders} onAdd={(o:any)=>cloudDb.add(cloudDb.COLLS.SALES, o)} onUpdate={(id:any, o:any)=>cloudDb.update(cloudDb.COLLS.SALES, id, o)} onPrint={(d:any, t:any)=>setPrintData({data:d, type:t})} />}
+                        {tab === 'finance' && <FinanceManager finance={finance} onAdd={(f:any)=>cloudDb.add(cloudDb.COLLS.FINANCE, f)} />}
+                        {tab === 'settings' && (
+                            <div className="space-y-6">
+                                <div className={CARD_CLASS}><h3 className="font-bold mb-2">إصدار النظام</h3><p className="text-xs text-slate-500">v2.1.0 Premium Cloud</p></div>
+                                <button onClick={handleWipe} className="w-full py-4 bg-red-950/20 border border-red-900/30 text-red-500 rounded-2xl font-bold flex items-center justify-center gap-2"><Trash size={18}/> تصفير النظام (ضبط مصنع)</button>
                             </div>
-                            <button onClick={()=>handleWipe('all')} className="w-full py-4 bg-red-950/20 border border-red-900/30 text-red-500 rounded-2xl font-bold flex items-center justify-center gap-2">
-                                <Trash size={18}/> مسح كل البيانات السحابية
-                            </button>
-                        </div>}
+                        )}
+                        {!['home', 'dresses_rent', 'bookings', 'dresses_sale', 'finance', 'settings'].includes(tab) && (
+                            <div className="text-center py-20 text-slate-600">سيتم تفعيل هذا القسم في التحديث القادم</div>
+                        )}
                     </div>
                 </main>
 
-                {/* Navigation */}
                 <nav className="fixed bottom-0 inset-x-0 h-16 bg-slate-900 border-t border-slate-800 flex justify-around items-center z-[60] pb-safe">
-                    <button onClick={()=>setTab('home')} className={`flex flex-col items-center gap-1 flex-1 ${tab==='home'?'text-brand-500':'text-slate-500'}`}><Home size={20}/><span className="text-[9px] font-bold">الرئيسية</span></button>
-                    <button onClick={()=>setTab('dresses_rent')} className={`flex flex-col items-center gap-1 flex-1 ${tab==='dresses_rent'?'text-brand-500':'text-slate-500'}`}><Shirt size={20}/><span className="text-[9px] font-bold">الإيجار</span></button>
-                    <button onClick={()=>setTab('dresses_sale')} className={`flex flex-col items-center gap-1 flex-1 ${tab==='dresses_sale'?'text-brand-500':'text-slate-500'}`}><ShoppingBag size={20}/><span className="text-[9px] font-bold">البيع</span></button>
-                    <button onClick={()=>setTab('delivery')} className={`flex flex-col items-center gap-1 flex-1 ${tab==='delivery'?'text-brand-500':'text-slate-500'}`}><Truck size={20}/><span className="text-[9px] font-bold">الاستلام</span></button>
-                    <button onClick={()=>setMoreMenuOpen(true)} className="flex flex-col items-center gap-1 flex-1 text-slate-500"><MoreHorizontal size={20}/><span className="text-[9px] font-bold">المزيد</span></button>
+                    <button onClick={()=>setTab('home')} className={`flex flex-col items-center gap-1 flex-1 ${tab==='home'?'text-brand-500':'text-slate-500'}`}><Home size={18}/><span className="text-[9px] font-bold">الرئيسية</span></button>
+                    <button onClick={()=>setTab('dresses_rent')} className={`flex flex-col items-center gap-1 flex-1 ${tab==='dresses_rent'?'text-brand-500':'text-slate-500'}`}><Shirt size={18}/><span className="text-[9px] font-bold">المخزون</span></button>
+                    <button onClick={()=>setTab('bookings')} className={`flex flex-col items-center gap-1 flex-1 ${tab==='bookings'?'text-brand-500':'text-slate-500'}`}><Calendar size={18}/><span className="text-[9px] font-bold">الحجوزات</span></button>
+                    <button onClick={()=>setTab('finance')} className={`flex flex-col items-center gap-1 flex-1 ${tab==='finance'?'text-brand-500':'text-slate-500'}`}><DollarSign size={18}/><span className="text-[9px] font-bold">المالية</span></button>
+                    <button onClick={()=>setMoreMenu(true)} className="flex flex-col items-center gap-1 flex-1 text-slate-500"><MoreHorizontal size={18}/><span className="text-[9px] font-bold">المزيد</span></button>
                 </nav>
 
-                {/* More Menu Overlay */}
-                {isMoreMenuOpen && (
-                    <div className="fixed inset-0 z-[100] bg-slate-950/98 backdrop-blur-xl p-8 animate-fade-in">
-                        <div className="flex justify-between items-center mb-10"><h3 className="text-2xl font-bold text-white">كل الأقسام</h3><button onClick={()=>setMoreMenuOpen(false)} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center"><X size={24}/></button></div>
+                {isMoreMenu && (
+                    <div className="fixed inset-0 z-[100] bg-slate-950/98 backdrop-blur-xl p-8 animate-fade-in flex flex-col">
+                        <div className="flex justify-between items-center mb-10"><h3 className="text-2xl font-bold">القائمة الكاملة</h3><button onClick={()=>setMoreMenu(false)} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center"><X/></button></div>
                         <div className="grid grid-cols-2 gap-4">
                             {NAV_ITEMS.map(item => (
-                                <button key={item.id} onClick={() => {setTab(item.id); setMoreMenuOpen(false)}} className={`bg-slate-900 border border-slate-800 p-6 rounded-3xl flex flex-col items-center gap-3 active:bg-brand-600 transition-colors ${tab===item.id?'border-brand-500':''}`}>
+                                <button key={item.id} onClick={() => {setTab(item.id); setMoreMenu(false)}} className={`bg-slate-900 border border-slate-800 p-6 rounded-3xl flex flex-col items-center gap-3 ${tab===item.id?'border-brand-500 bg-brand-600/10':''}`}>
                                     <span className="text-xs font-bold text-slate-300">{item.label}</span>
                                 </button>
                             ))}
@@ -468,15 +541,14 @@ const App = () => {
                     </div>
                 )}
                 
-                {/* Toasts */}
-                <div className="fixed bottom-24 inset-x-4 z-[200] flex flex-col gap-2 pointer-events-none">
-                    {toasts.map(t=>(
-                        <div key={t.id} className={`px-4 py-3 rounded-2xl shadow-2xl border flex items-center gap-3 animate-slide-in-up max-w-sm mx-auto w-full ${t.type==='success'?'bg-emerald-950/90 border-emerald-500/50 text-emerald-200':'bg-red-950/90 border-red-500/50 text-red-200'}`}>
-                            {t.type==='success' ? <Check size={18}/> : <AlertCircle size={18}/>}
-                            <span className="text-xs font-bold">{t.msg}</span>
-                        </div>
-                    ))}
-                </div>
+                {toasts.map(t=>(
+                    <div key={t.id} className={`fixed bottom-24 inset-x-4 z-[200] px-4 py-3 rounded-2xl shadow-2xl border flex items-center gap-3 animate-slide-in-up max-w-sm mx-auto w-full pointer-events-none ${t.type==='success'?'bg-emerald-950/90 border-emerald-500/50 text-emerald-200':'bg-red-950/90 border-red-500/50 text-red-200'}`}>
+                        {t.type==='success' ? <Check size={18}/> : <AlertCircle size={18}/>}
+                        <span className="text-xs font-bold">{t.msg}</span>
+                    </div>
+                ))}
+
+                {printData && <PrePrintedInvoice data={printData.data} type={printData.type} onClose={()=>setPrintData(null)} />}
             </div>
         </ToastContext.Provider>
     );
