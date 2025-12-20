@@ -15,24 +15,32 @@ export const NAV_ITEMS = [
 export const PERMISSIONS_LIST = [
     { id: 'ALL', label: 'مدير النظام (صلاحيات كاملة)' },
     { id: 'home_view', label: 'الرئيسية: مشاهدة' },
+    
     { id: 'dresses_rent_view', label: 'ف. إيجار: مشاهدة المخزون' },
     { id: 'dresses_rent_add', label: 'ف. إيجار: إضافة/تعديل' },
     { id: 'dresses_rent_delete', label: 'ف. إيجار: حذف/أرشيف' },
-    { id: 'dresses_rent_analytics', label: 'ف. إيجار: تقارير الأداء' },
+    { id: 'dresses_rent_analytics', label: 'ف. إيجار: تقارير الأداء (الأكثر طلباً)' },
+    
     { id: 'bookings_view', label: 'الحجوزات: مشاهدة' },
     { id: 'bookings_add', label: 'الحجوزات: إضافة/تعديل' },
     { id: 'bookings_delete', label: 'الحجوزات: حذف' },
+
     { id: 'dresses_sale_view', label: 'ف. بيع: مشاهدة' },
     { id: 'dresses_sale_add', label: 'ف. بيع: إضافة/تعديل' },
     { id: 'dresses_sale_deliver', label: 'ف. بيع: تسليم للعروس' },
+
     { id: 'factory_view', label: 'المصنع: مشاهدة' },
     { id: 'factory_pay', label: 'المصنع: سداد دفعات' },
+
     { id: 'delivery_view', label: 'التسليم/إرجاع: مشاهدة' },
     { id: 'delivery_action', label: 'التسليم/إرجاع: تنفيذ عمليات' },
+    
     { id: 'customers_view', label: 'العملاء: مشاهدة' },
+    
     { id: 'finance_ops', label: 'المالية: إدخال وعرض الجدول' },
     { id: 'finance_analytics', label: 'المالية: التحليلات العامة' },
     { id: 'finance_profit_analysis', label: 'المالية: تحليل ربحية الفساتين' },
+    
     { id: 'logs_view', label: 'سجل الحركة: مشاهدة' },
     { id: 'settings_view', label: 'الإعدادات: مشاهدة' },
 ];
