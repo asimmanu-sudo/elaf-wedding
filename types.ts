@@ -18,7 +18,13 @@ export enum PaymentMethod {
 }
 
 export interface User {
-  id: string; username: string; password?: string; role: UserRole; name: string; permissions: string[];
+  id: string; 
+  username: string; 
+  password?: string; 
+  role: UserRole; 
+  name: string; 
+  permissions: string[];
+  firstLogin?: boolean;
 }
 
 export interface Measurements {
@@ -87,8 +93,8 @@ export interface Booking {
 
 export interface FinanceRecord {
   id: string; date: string; type: 'INCOME' | 'EXPENSE';
-  category: string; amount: number; notes: string; relatedId?: string;
-  createdBy?: string; 
+  category: string; subCategory?: string; amount: number; notes: string; relatedId?: string;
+  createdBy?: string; targetName?: string; // لاسم الموظف في الرواتب أو الفساتين في التنظيف
 }
 
 export interface AuditLog {
