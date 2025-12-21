@@ -1,291 +1,1282 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useContext, createContext } from 'react';
 import { 
-  Home, Shirt, Calendar, Truck, Users, DollarSign, FileText, Settings, LogOut, Plus, 
-  Search, Edit, Trash2, Check, X, Printer, Droplets, User, Factory, 
-  RotateCcw, AlertCircle, TrendingUp, Bell, ShoppingBag,
-  Gift, AlertTriangle, Lock, Menu, MoreHorizontal,
-  Scissors, FileCheck, Loader2, Undo2, CheckSquare, BarChart3, Clock, ArrowRightLeft, CreditCard, Ruler, Archive, Key, Trash, Info, UserPlus
+  Home, Shirt, Calendar, ShoppingBag, Factory, Truck, Users, DollarSign, FileText, 
+  Settings, LogOut, Plus, Search, Edit, Trash2, Check, X, AlertTriangle, Ruler, 
+  Droplets, CheckCircle, Info, Menu, ChevronRight, Save, Key, UserPlus, Database, User as UserIcon
 } from 'lucide-react';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell 
+} from 'recharts';
 import { cloudDb, COLLS } from './services/firebase';
 import { 
-    UserRole, DressType, DressStatus, BookingStatus, 
-    SaleStatus, FactoryPaymentStatus, PaymentMethod, DepositType
+  UserRole, DressType, DressStatus, BookingStatus, SaleStatus, 
+  FactoryPaymentStatus, DepositType 
 } from './types';
 import type { 
-    User as UserType, Dress, Booking, 
-    FinanceRecord, SaleOrder, AuditLog, Customer as CustomerType
+  User, Dress, SaleOrder, Booking, FinanceRecord, AuditLog, Customer, Measurements 
 } from './types';
 import { NAV_ITEMS, PERMISSIONS_LIST } from './constants';
 
-// --- Global Styles & Helpers ---
-const INPUT_CLASS = "w-full bg-slate-900/50 text-white border border-slate-700/50 rounded-2xl p-4 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition-all placeholder-slate-600 text-sm";
-const BTN_PRIMARY = "w-full bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white py-4 rounded-2xl font-bold shadow-xl shadow-brand-900/20 flex justify-center items-center gap-2 active:scale-[0.98] transition-all text-sm disabled:opacity-50";
-const CARD_CLASS = "bg-slate-900/40 backdrop-blur-xl border border-white/5 rounded-[2.5rem] p-6 shadow-sm relative overflow-hidden group hover:border-white/10 transition-all";
-const BADGE_CLASS = "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border inline-flex items-center justify-center gap-1.5";
+// --- Shared Components & Helpers ---
 
-const formatDate = (iso: string) => iso ? new Date(iso).toLocaleString('ar-EG', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
-const formatCurrency = (val: number | undefined) => new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP', maximumFractionDigits: 0 }).format(val || 0);
+const CARD_CLASS = "bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-[2rem] p-6 shadow-xl animate-scale-in";
+// Define missing BADGE_CLASS
+const BADGE_CLASS = "px-3 py-1 rounded-full text-[10px] font-black uppercase";
+const INPUT_CLASS = "w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-brand-500 outline-none transition-all";
+const BTN_PRIMARY = "bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50";
+const BTN_SECONDARY = "bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95";
 
-const getStatusColor = (status: string) => {
-    switch(status) {
-        case DressStatus.AVAILABLE: return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-        case DressStatus.RENTED: return 'bg-brand-500/10 text-brand-400 border-brand-500/20';
-        case DressStatus.CLEANING: return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
-        case BookingStatus.ACTIVE: return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-        case SaleStatus.DESIGNING: return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
-        case SaleStatus.READY: return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-        case SaleStatus.DELIVERED: return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-        default: return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
-    }
-};
-
-const Modal = ({ title, children, onClose, size = 'md' }: any) => (
-    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-950/90 backdrop-blur-md p-0 md:p-4 animate-fade-in">
-        <div className={`bg-slate-900 border-t md:border border-white/10 rounded-t-[3rem] md:rounded-[3.5rem] shadow-2xl w-full ${size==='lg'?'max-w-4xl':'max-w-xl'} flex flex-col animate-slide-in-up max-h-[95vh]`}>
-            <div className="flex justify-between items-center p-8 border-b border-white/5">
-                <h2 className="text-xl font-black text-brand-300 tracking-tight">{String(title)}</h2>
-                <button onClick={onClose} className="w-12 h-12 flex items-center justify-center bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"><X size={24}/></button>
-            </div>
-            <div className="p-8 overflow-y-auto flex-1 pb-20">{children}</div>
-        </div>
-    </div>
-);
+const formatCurrency = (val: number) => new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP', maximumFractionDigits: 0 }).format(val);
 
 const MEASUREMENT_FIELDS = [
-    { key: 'neck', label: 'محيط الرقبة' },
-    { key: 'shoulder', label: 'محيط الكتف' },
-    { key: 'chest', label: 'محيط الصدر' },
-    { key: 'underChest', label: 'محيط تحت الصدر' },
-    { key: 'chestDart', label: 'طول بنس الصدر' },
-    { key: 'waist', label: 'محيط الخصر' },
-    { key: 'backLength', label: 'طول الظهر' },
-    { key: 'hips', label: 'محيط الهانش' },
-    { key: 'fullLength', label: 'الطول الكامل' },
-    { key: 'sleeve', label: 'طول اليد' },
-    { key: 'armhole', label: 'محيط الأبط' },
-    { key: 'arm', label: 'محيط الذراع' },
-    { key: 'forearm', label: 'محيط الساعد' },
-    { key: 'wrist', label: 'محيط الأسوارة' },
-    { key: 'legOpening', label: 'محيط فتحة الرجل' },
-    { key: 'bustType', label: 'نوع الصدر' },
-    { key: 'skirtType', label: 'نوع التنورة' },
-    { key: 'materials', label: 'الخامة المستخدمة' },
-    { key: 'orderNotes', label: 'الشرح المطلوب للأوردر' },
+  { id: 'neck', label: 'محيط الرقبة' }, { id: 'shoulder', label: 'محيط الكتف' },
+  { id: 'chest', label: 'محيط الصدر' }, { id: 'underChest', label: 'محيط تحت الصدر' },
+  { id: 'chestDart', label: 'طول بنس الصدر' }, { id: 'waist', label: 'محيط الخصر' },
+  { id: 'backLength', label: 'طول الظهر' }, { id: 'hips', label: 'محيط الهانش' },
+  { id: 'fullLength', label: 'الطول الكامل' }, { id: 'sleeve', label: 'طول اليد' },
+  { id: 'armhole', label: 'محيط الأبط' }, { id: 'arm', label: 'محيط الذراع' },
+  { id: 'forearm', label: 'محيط الساعد' }, { id: 'wrist', label: 'محيط الأسوارة' },
+  { id: 'legOpening', label: 'محيط فتحة الرجل' }, { id: 'bustType', label: 'نوع الصدر' },
+  { id: 'skirtType', label: 'نوع التنورة' }, { id: 'materials', label: 'الخامة المستخدمة' },
+  { id: 'orderNotes', label: 'الشرح المطلوب للأوردر' }
 ];
 
-const MeasurementsModal = ({ data, onSave, onClose, title }: any) => {
-    const [measurements, setMeasurements] = useState<any>(data?.measurements || {});
-    return (
-        <Modal title={title} onClose={onClose} size="lg">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {MEASUREMENT_FIELDS.map(f => (
-                    <div key={f.key} className="space-y-1">
-                        <label className="text-[10px] text-slate-500 font-black uppercase px-2">{f.label}</label>
-                        {f.key === 'orderNotes' || f.key === 'materials' ? (
-                            <textarea className={INPUT_CLASS + " h-24"} value={measurements[f.key] || ''} onChange={e => setMeasurements({...measurements, [f.key]: e.target.value})} />
-                        ) : (
-                            <input className={INPUT_CLASS} value={measurements[f.key] || ''} onChange={e => setMeasurements({...measurements, [f.key]: e.target.value})} />
-                        )}
-                    </div>
-                ))}
-            </div>
-            <button onClick={() => onSave(measurements)} className={BTN_PRIMARY + " mt-8"}><CheckSquare size={20}/> حفظ المقاسات</button>
-        </Modal>
-    );
-};
-
-// --- Component Managers ---
-
-const FinanceManager = ({ finance, users, dresses, onAdd }: any) => {
-    const [isModal, setModal] = useState(false);
-    const [type, setType] = useState<'INCOME'|'EXPENSE'>('INCOME');
-    const [category, setCategory] = useState('');
-    const [billType, setBillType] = useState('');
-    const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
-    const rentalDresses = dresses.filter((d:any) => d.type === DressType.RENT);
-    return (
-        <div className="space-y-8 animate-fade-in">
-            <h3 className="text-3xl font-black text-white px-2">المالية</h3>
-            <button onClick={()=>{setModal(true); setCategory(''); setSelectedEntities([])}} className={BTN_PRIMARY + " h-16 text-lg"}><Plus size={24}/> إضافة حركة مالية</button>
-            <div className={CARD_CLASS}><div className="divide-y divide-white/5">{finance.sort((a,b)=>new Date(b.date).getTime()-new Date(a.date).getTime()).map((f:any)=>(<div key={f.id} className="py-6 flex justify-between items-center"><div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-xl flex items-center justify-center ${f.type==='INCOME'?'bg-emerald-500/20 text-emerald-400':'bg-red-500/20 text-red-400'}`}>{f.type==='INCOME'?<TrendingUp size={18}/>:<ArrowRightLeft size={18}/>}</div><div><p className="font-black text-white text-sm">{f.category}</p><p className="text-[10px] text-slate-500 font-bold">{formatDate(f.date)} {f.targetName ? `• ${f.targetName}` : ''}</p></div></div><p className={`font-black text-sm ${f.type==='INCOME'?'text-emerald-400':'text-red-400'}`}>{f.type==='INCOME'?'+':'-'} {formatCurrency(f.amount)}</p></div>))}</div></div>
-            {isModal && (<Modal title="إضافة حركة مالية" onClose={()=>setModal(false)}><form onSubmit={async (e:any)=>{
-                e.preventDefault(); const fd = new FormData(e.target); const finalCat = type === 'INCOME' ? fd.get('in_cat') : category; const sub = category === 'فواتير' ? billType : (category === 'اخرى' ? fd.get('sub_cat') : ''); const target = selectedEntities.join(', ') || fd.get('target') || '';
-                await onAdd({ type, amount: Number(fd.get('amount')), category: finalCat, subCategory: sub, targetName: target, date: fd.get('date') || new Date().toISOString() }); setModal(false);
-            }} className="space-y-6"><div className="flex p-1.5 bg-slate-950 rounded-3xl border border-white/5"><button type="button" onClick={()=>setType('INCOME')} className={`flex-1 py-4 rounded-2xl text-sm font-black ${type==='INCOME'?'bg-emerald-600 text-white':'text-slate-500'}`}>وارد</button><button type="button" onClick={()=>setType('EXPENSE')} className={`flex-1 py-4 rounded-2xl text-sm font-black ${type==='EXPENSE'?'bg-red-600 text-white':'text-slate-500'}`}>منصرف</button></div>
-                        {type === 'INCOME' ? <input name="in_cat" placeholder="نوع الوارد..." className={INPUT_CLASS} required /> : (
-                            <div className="space-y-4"><select className={INPUT_CLASS} required onChange={e=>{setCategory(e.target.value); setSelectedEntities([])}}><option value="">اختر التصنيف...</option><option value="فواتير">فواتير</option><option value="رواتب">رواتب</option><option value="تنظيف">تنظيف</option><option value="ترزي">ترزي</option><option value="اخرى">أخرى</option></select>
-                                {category === 'فواتير' && <select className={INPUT_CLASS} required onChange={e=>setBillType(e.target.value)}><option value="">نوع الفاتورة...</option><option value="ايجار">إيجار</option><option value="كهرباء">كهرباء</option><option value="ماء">ماء</option><option value="صيانة">صيانة</option><option value="اخرى">أخرى (سيظهر حقل إضافي)</option></select>}
-                                {category === 'فواتير' && billType === 'اخرى' && <input name="sub_cat" placeholder="تفاصيل الفاتورة" className={INPUT_CLASS} required />}
-                                {category === 'رواتب' && <select className={INPUT_CLASS} required onChange={e=>setSelectedEntities([e.target.value])}><option value="">اختر الموظف...</option>{users.map((u:any)=><option key={u.id} value={u.name}>{u.name}</option>)}</select>}
-                                {(category === 'تنظيف' || category === 'ترزي') && <div className="p-4 bg-slate-950 rounded-2xl border border-white/5 space-y-2 max-h-48 overflow-y-auto"><p className="text-[10px] text-slate-500 font-black mb-2 px-2">اختر الفساتين المعنية:</p>{rentalDresses.map((d:any) => (<label key={d.id} className="flex items-center gap-3 p-3 bg-slate-900 rounded-xl cursor-pointer hover:bg-slate-800"><input type="checkbox" className="w-5 h-5 accent-brand-500" checked={selectedEntities.includes(d.name)} onChange={e => e.target.checked ? setSelectedEntities([...selectedEntities, d.name]) : setSelectedEntities(selectedEntities.filter(x => x !== d.name))} /><span className="text-xs text-white font-bold">{d.name}</span></label>))}</div>}
-                                {category === 'اخرى' && <input name="sub_cat" placeholder="النوع" className={INPUT_CLASS} required />}
-                            </div>)}<div className="grid grid-cols-2 gap-4"><input name="amount" type="number" placeholder="المبلغ" className={INPUT_CLASS} required /><input name="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} className={INPUT_CLASS} required /></div><button className={BTN_PRIMARY}>تثبيت العملية</button></form></Modal>)}
-        </div>
-    );
-};
-
-const SalesManager = ({ orders, onAdd, onUpdate, onFinanceAdd }: any) => {
-    const [view, setView] = useState<'ACTIVE'|'COMPLETED'>('ACTIVE');
-    const [isModal, setModal] = useState(false);
-    const [collectModal, setCollectModal] = useState<any>(null);
-    const [measurementsModal, setMeasurementsModal] = useState<any>(null);
-    const filtered = orders.filter((o:any) => view === 'COMPLETED' ? o.status === SaleStatus.DELIVERED : o.status !== SaleStatus.DELIVERED);
-    return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex justify-between items-center px-2"><h3 className="text-3xl font-black text-white">مبيعات التفصيل</h3><div className="flex gap-2 p-1.5 bg-slate-900 rounded-3xl border border-white/5"><button onClick={()=>setView('ACTIVE')} className={`px-6 py-2.5 rounded-2xl text-xs font-black ${view==='ACTIVE'?'bg-brand-600 text-white':'text-slate-500'}`}>النشطة</button><button onClick={()=>setView('COMPLETED')} className={`px-6 py-2.5 rounded-2xl text-xs font-black ${view==='COMPLETED'?'bg-brand-600 text-white':'text-slate-500'}`}>المكتملة</button></div></div>
-            {view === 'ACTIVE' ? (<><button onClick={()=>setModal(true)} className={BTN_PRIMARY + " h-16 text-lg"}><Plus size={24}/> طلب تفصيل جديد</button>
-                    <div className="grid gap-4">{filtered.map((o:any)=>(<div key={o.id} className={CARD_CLASS}><div className="flex justify-between items-start mb-4"><div><h4 className="font-black text-white text-xl">{o.brideName}</h4><p className="text-sm text-brand-400 font-bold">{o.bridePhone}</p></div><span className={BADGE_CLASS + " " + getStatusColor(o.status)}>{o.status}</span></div>
-                                <div className="grid grid-cols-2 gap-3 mb-4"><div className="bg-slate-950/50 p-4 rounded-3xl border border-white/5"><p className="text-[10px] text-slate-500 font-black">كود المصنع</p><p className="text-sm font-black text-white">{o.factoryCode}</p></div><div className="bg-slate-950/50 p-4 rounded-3xl border border-white/5"><p className="text-[10px] text-slate-500 font-black">المتبقي</p><p className="text-sm font-black text-red-400">{formatCurrency(o.remainingFromBride)}</p></div></div>
-                                <div className="flex justify-between items-center"><button onClick={()=>setMeasurementsModal(o)} className="p-2 bg-slate-800 text-brand-400 rounded-xl hover:bg-brand-600 hover:text-white transition-all"><Ruler size={18}/></button><div className="flex gap-2">{o.status === SaleStatus.DESIGNING && <button onClick={()=>onUpdate(o.id, {status: SaleStatus.READY})} className="px-4 py-2 bg-emerald-600/10 text-emerald-400 rounded-xl text-[10px] font-black">جاهز</button>}<button onClick={()=>setCollectModal(o)} className="px-4 py-2 bg-brand-600 text-white rounded-xl text-[10px] font-black">تسليم للعروس</button></div></div></div>))}</div></>) : (
-                <div className="overflow-x-auto bg-slate-900/50 border border-white/5 rounded-[2.5rem]"><table className="w-full text-right border-collapse"><thead><tr className="bg-slate-950/40 text-slate-500 text-[10px] font-black uppercase border-b border-white/5"><th className="p-5">كود المصنع</th><th className="p-5">العروس</th><th className="p-5 text-center">المتبقي</th><th className="p-5 text-center">الإجراءات</th></tr></thead><tbody className="divide-y divide-white/5">{filtered.map((o:any)=>(<tr key={o.id} className="hover:bg-white/5"><td className="p-5 text-sm font-black text-white">{o.factoryCode}</td><td className="p-5 text-sm text-slate-400">{o.brideName}</td><td className="p-5 text-center text-sm font-black text-red-400">{formatCurrency(o.remainingFromBride)}</td><td className="p-5 text-center"><div className="flex justify-center gap-2">{o.remainingFromBride > 0 && <button onClick={()=>setCollectModal(o)} className="p-2 text-emerald-400 hover:bg-emerald-500/10 rounded-lg"><DollarSign size={18}/></button>}<button onClick={()=>{if(confirm('استعادة للتصميم؟')){onUpdate(o.id, {status: SaleStatus.DESIGNING});}}} className="p-2 text-brand-400 hover:bg-brand-500/10 rounded-lg"><RotateCcw size={18}/></button></div></td></tr>))}</tbody></table></div>)}
-            {isModal && (<Modal title="طلب تفصيل جديد" onClose={()=>setModal(false)}><form onSubmit={async (e:any)=>{
-                e.preventDefault(); const fd = new FormData(e.target); const code = fd.get('code')?.toString(); if(orders.some((o:any) => o.factoryCode === code && o.status !== SaleStatus.DELIVERED)){ alert('كود مكرر!'); return; }
-                const sPrice = Number(fd.get('sPrice')); const dep = Number(fd.get('deposit'));
-                await onAdd({ brideName: fd.get('name'), bridePhone: fd.get('phone'), factoryCode: code, factoryPrice: Number(fd.get('fPrice')), sellPrice: sPrice, deposit: dep, remainingFromBride: sPrice - dep, status: SaleStatus.DESIGNING, factoryStatus: FactoryPaymentStatus.UNPAID, factoryDepositPaid: 0, orderDate: new Date().toISOString() });
-                if(dep > 0) await onFinanceAdd({ amount: dep, type: 'INCOME', category: 'عربون مبيعات (تفصيل)', targetName: fd.get('name'), date: new Date().toISOString() }); setModal(false);
-            }} className="space-y-4"><div className="grid grid-cols-2 gap-4"><input name="name" placeholder="العروس" className={INPUT_CLASS} required /><input name="phone" placeholder="الهاتف" className={INPUT_CLASS} required /></div><input name="code" placeholder="كود الفستان" className={INPUT_CLASS} required /><div className="grid grid-cols-3 gap-3"><input name="fPrice" type="number" placeholder="تكلفة المصنع" className={INPUT_CLASS} required /><input name="sPrice" type="number" placeholder="سعر البيع" className={INPUT_CLASS} required /><input name="deposit" type="number" placeholder="العربون" className={INPUT_CLASS} required /></div><button className={BTN_PRIMARY}>تثبيت الطلب</button></form></Modal>)}
-            {collectModal && (<Modal title={`تحصيل متبقي - ${collectModal.brideName}`} onClose={()=>setCollectModal(null)}><form onSubmit={async (e:any)=>{
-                e.preventDefault(); const amount = Number(new FormData(e.target).get('amount')); await onUpdate(collectModal.id, { remainingFromBride: collectModal.remainingFromBride - amount, status: SaleStatus.DELIVERED });
-                if(amount > 0) await onFinanceAdd({ amount, type: 'INCOME', category: `تحصيل نهائي مبيعات - ${collectModal.brideName}`, targetName: collectModal.brideName, date: new Date().toISOString() }); setCollectModal(null);
-            }} className="space-y-6"><div className="bg-slate-950 p-6 rounded-3xl border border-white/5 text-center"><p className="text-xs text-slate-500 font-black mb-2 uppercase">المتبقي: {formatCurrency(collectModal.remainingFromBride)}</p><input name="amount" type="number" defaultValue={collectModal.remainingFromBride} className={INPUT_CLASS + " text-center text-xl font-black"} required /></div><button className={BTN_PRIMARY}>تأكيد التسليم</button></form></Modal>)}
-            {measurementsModal && <MeasurementsModal title={`مقاسات العروس: ${measurementsModal.brideName}`} data={measurementsModal} onSave={m => {onUpdate(measurementsModal.id, {measurements: m}); setMeasurementsModal(null);}} onClose={()=>setMeasurementsModal(null)} />}
-        </div>
-    );
-};
-
-const CustomerManager = ({ bookings, orders }: any) => {
-    const [search, setSearch] = useState('');
-    const customers = useMemo(() => {
-        const map = new Map();
-        bookings.forEach((b:any) => map.set(b.customerPhone, { name: b.customerName, phone: b.customerPhone, type: 'إيجار', date: b.createdAt }));
-        orders.forEach((o:any) => map.set(o.bridePhone, { name: o.brideName, phone: o.bridePhone, type: 'بيع', date: o.createdAt }));
-        return Array.from(map.values()).filter(c => c.name.includes(search) || c.phone.includes(search));
-    }, [bookings, orders, search]);
-    return (<div className="space-y-6 animate-fade-in"><h3 className="text-3xl font-black text-white px-2">سجل العملاء</h3><div className="relative"><Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500" size={20}/><input placeholder="بحث..." className={INPUT_CLASS + " pr-14 h-16"} onChange={e=>setSearch(e.target.value)} /></div>
-            <div className="grid gap-4">{customers.map(c => (<div key={c.phone} className={CARD_CLASS}><div className="flex justify-between items-center"><div><h4 className="font-black text-white text-xl">{c.name}</h4><p className="text-sm text-brand-400 font-bold">{c.phone}</p></div><div className="text-left"><span className={BADGE_CLASS + " border-brand-500/20 text-brand-300"}>{c.type}</span><p className="text-[10px] text-slate-500 font-bold mt-2 uppercase">{formatDate(c.date)}</p></div></div></div>))}</div></div>);
-};
-
-const LogManager = ({ logs }: any) => (
-    <div className="space-y-6 animate-fade-in"><h3 className="text-3xl font-black text-white px-2">سجل الحركة</h3><div className={CARD_CLASS}><div className="divide-y divide-white/5">{logs.sort((a:any,b:any)=>new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime()).map((l:any)=>(<div key={l.id} className="py-6 flex justify-between items-start gap-4"><div className="flex items-center gap-3"><div className="w-8 h-8 bg-slate-800 rounded-lg flex items-center justify-center text-slate-500"><Clock size={16}/></div><div><p className="text-sm font-black text-white">{l.action}</p><p className="text-[10px] text-slate-500">{l.username} • {formatDate(l.timestamp)}</p></div></div><p className="text-[10px] text-brand-400 font-bold flex-1 text-left">{l.details}</p></div>))}</div></div></div>
+const Modal = ({ title, children, onClose, size = 'md' }: any) => (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+    <div className={`bg-slate-900 border border-white/10 rounded-[2.5rem] w-full ${size === 'lg' ? 'max-w-4xl' : 'max-w-xl'} p-8 shadow-2xl relative animate-scale-in my-auto`}>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-black text-white">{title}</h2>
+        <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X size={24}/></button>
+      </div>
+      <div className="max-h-[75vh] overflow-y-auto custom-scrollbar">{children}</div>
+    </div>
+  </div>
 );
 
-const SettingsManager = ({ user, users, onUpdate, onAdd, onDelete, resetSystem }: any) => {
-    const [userModal, setUserModal] = useState<any>(null);
-    const [selectedPerms, setSelectedPerms] = useState<string[]>([]);
-    const isAdmin = user.role === UserRole.ADMIN;
-    return (<div className="space-y-8 animate-fade-in"><h3 className="text-3xl font-black text-white px-2">الإعدادات</h3>
-        <div className={CARD_CLASS}><div className="flex items-center gap-5 mb-8"><div className="w-20 h-20 bg-brand-500/10 rounded-3xl flex items-center justify-center text-brand-400"><User size={40}/></div><div><h4 className="text-2xl font-black text-white">{user.name}</h4><p className="text-sm text-slate-500 font-bold">@{user.username} • {user.role}</p></div></div><button onClick={()=>setUserModal(user)} className={BTN_PRIMARY + " bg-slate-800 hover:bg-slate-750"}><Key size={20}/> تغيير كلمة المرور</button></div>
-        {isAdmin && (<div className="space-y-4"><div className="flex justify-between items-center px-4"><h4 className="text-xl font-black text-white">إدارة الموظفين والصلاحيات</h4><button onClick={()=>{setUserModal({}); setSelectedPerms([])}} className="p-3 bg-brand-500/10 text-brand-400 rounded-2xl hover:bg-brand-500/20"><UserPlus size={24}/></button></div><div className="grid gap-4">{users.map((u:any)=>(<div key={u.id} className={CARD_CLASS + " p-6"}><div className="flex justify-between items-center"><div className="flex items-center gap-4"><div className="w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400"><User size={24}/></div><div><p className="font-black text-white">{u.name}</p><p className="text-xs text-slate-500 mt-0.5">@{u.username} • {u.permissions.includes('ALL') ? 'كامل الصلاحيات' : `${u.permissions.length} صلاحيات`}</p></div></div><div className="flex gap-2"><button onClick={()=>{setUserModal(u); setSelectedPerms(u.permissions)}} className="p-3 text-slate-400 hover:text-brand-400"><Edit size={20}/></button>{u.id !== user.id && <button onClick={()=>{if(confirm('حذف الموظف؟')){onDelete(u.id);}}} className="p-3 text-slate-400 hover:text-red-400"><Trash2 size={20}/></button>}</div></div></div>))}</div><div className="p-8 bg-red-500/5 border border-red-500/10 rounded-[3rem] space-y-4"><h4 className="text-red-400 font-black">إعادة ضبط المصنع</h4><button onClick={()=>{if(confirm('سيتم حذف كافة الداتا! هل أنت متأكد؟')){resetSystem();}}} className="w-full py-4 border-2 border-red-500/20 text-red-500 rounded-2xl font-black hover:bg-red-500 hover:text-white transition-all text-xs">حذف كافة البيانات السحابية</button></div></div>)}
-        {userModal && (<Modal title={userModal.id ? `تعديل الموظف: ${userModal.name}` : 'إضافة موظف جديد'} onClose={()=>setUserModal(null)} size="lg"><form onSubmit={async (e:any)=>{
-                e.preventDefault(); const fd = new FormData(e.target); const data = { name: fd.get('name'), username: fd.get('user'), password: fd.get('pass') || '123', permissions: isAdmin ? selectedPerms : userModal.permissions, firstLogin: !userModal.id };
-                if(userModal.id) await onUpdate(userModal.id, data); else await onAdd({ ...data, role: UserRole.EMPLOYEE }); setUserModal(null);
-            }} className="space-y-6"><div className="grid grid-cols-2 gap-4"><input name="name" defaultValue={userModal.name} placeholder="الاسم" className={INPUT_CLASS} required /><input name="user" defaultValue={userModal.username} placeholder="اسم المستخدم" className={INPUT_CLASS} required /></div><input name="pass" type="password" placeholder={userModal.id ? "كلمة المرور الجديدة" : "كلمة المرور (123)"} className={INPUT_CLASS} />
-                {isAdmin && (<div className="space-y-4"><p className="text-xs font-black text-slate-500 uppercase px-2">تخصيص الصلاحيات:</p><div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-72 overflow-y-auto p-5 bg-slate-950 rounded-3xl border border-white/5">{PERMISSIONS_LIST.map(p => (<label key={p.id} className="flex items-center gap-3 p-4 bg-slate-900 rounded-2xl cursor-pointer hover:bg-slate-800"><input type="checkbox" className="w-6 h-6 accent-brand-500" checked={selectedPerms.includes(p.id)} onChange={e=>e.target.checked ? setSelectedPerms([...selectedPerms, p.id]) : setSelectedPerms(selectedPerms.filter(x=>x!==p.id))} /><span className="text-sm text-white font-bold">{p.label}</span></label>))}</div></div>)}<button className={BTN_PRIMARY}>{userModal.id ? 'حفظ' : 'إضافة'}</button></form></Modal>)}
-    </div>);
-};
+// --- Main App Component ---
 
-// --- Main App ---
 export default function App() {
-    const [user, setUser] = useState<UserType|null>(null);
-    const [tab, setTab] = useState('home');
-    const [loading, setLoading] = useState(true);
-    const [isMenuOpen, setMenuOpen] = useState(false);
-    const [dresses, setDresses] = useState<Dress[]>([]);
-    const [bookings, setBookings] = useState<Booking[]>([]);
-    const [finance, setFinance] = useState<FinanceRecord[]>([]);
-    const [orders, setOrders] = useState<SaleOrder[]>([]);
-    const [users, setUsers] = useState<UserType[]>([]);
-    const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [activeTab, setActiveTab] = useState('home');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-    useEffect(() => {
-        const unsubs = [
-            cloudDb.subscribe(COLLS.DRESSES, setDresses), cloudDb.subscribe(COLLS.BOOKINGS, setBookings), 
-            cloudDb.subscribe(COLLS.FINANCE, setFinance), cloudDb.subscribe(COLLS.SALES, setOrders), 
-            cloudDb.subscribe(COLLS.USERS, setUsers), cloudDb.subscribe(COLLS.LOGS, setLogs)
-        ];
-        setTimeout(() => setLoading(false), 1200); return () => unsubs.forEach(u => u());
-    }, []);
+  // Data State
+  const [dresses, setDresses] = useState<Dress[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [saleOrders, setSaleOrders] = useState<SaleOrder[]>([]);
+  const [finance, setFinance] = useState<FinanceRecord[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [logs, setLogs] = useState<AuditLog[]>([]);
 
-    const addLog = (action: string, details: string) => {
-        if(user) cloudDb.add(COLLS.LOGS, { action, userId: user.id, username: user.name, timestamp: new Date().toISOString(), details });
+  // Subscription
+  useEffect(() => {
+    const unsubDresses = cloudDb.subscribe(COLLS.DRESSES, setDresses);
+    const unsubBookings = cloudDb.subscribe(COLLS.BOOKINGS, setBookings);
+    const unsubSales = cloudDb.subscribe(COLLS.SALES, setSaleOrders);
+    const unsubFinance = cloudDb.subscribe(COLLS.FINANCE, setFinance);
+    const unsubUsers = cloudDb.subscribe(COLLS.USERS, setUsers);
+    const unsubLogs = cloudDb.subscribe(COLLS.LOGS, setLogs);
+    return () => {
+      unsubDresses(); unsubBookings(); unsubSales(); unsubFinance(); unsubUsers(); unsubLogs();
     };
+  }, []);
 
-    const resetSystem = async () => {
-        const allColls = [COLLS.DRESSES, COLLS.BOOKINGS, COLLS.SALES, COLLS.FINANCE, COLLS.CUSTOMERS, COLLS.LOGS];
-        for(const c of allColls){
-            const data = await new Promise<any[]>((resolve) => {
-                const unsub = cloudDb.subscribe(c, (d) => { resolve(d); unsub(); });
-            });
-            for(const item of data) await cloudDb.delete(c, item.id);
-        }
-        alert('تم تصفير النظام بنجاح.'); window.location.reload();
-    };
+  const hasPerm = (perm: string) => {
+    if (!currentUser) return false;
+    return currentUser.role === UserRole.ADMIN || currentUser.permissions.includes(perm);
+  };
 
-    const can = (perm: string) => {
-        if (!user) return false;
-        if (user.permissions.includes('ALL')) return true;
-        return user.permissions.includes(perm);
-    };
+  const addLog = async (action: string, details: string) => {
+    if (currentUser) {
+      await cloudDb.add(COLLS.LOGS, {
+        action,
+        username: currentUser.name,
+        timestamp: new Date().toISOString(),
+        details
+      });
+    }
+  };
 
-    if (loading) return <div className="h-screen flex items-center justify-center bg-slate-950 font-black text-brand-500 tracking-widest text-xs animate-pulse">إيلاف سحابي v4.5</div>;
-
-    if (!user) return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-950 p-6">
-            <div className="w-full max-w-sm bg-slate-900 border border-white/5 p-12 rounded-[4rem] shadow-2xl relative">
-                <div className="text-center mb-10"><div className="w-24 h-24 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10 shadow-2xl overflow-hidden p-2"><img src="/logo.png" alt="لوقو" className="w-full h-full object-contain" onError={e => {(e.currentTarget as any).style.display='none'; (e.currentTarget as any).parentElement.innerHTML='<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#d946ef" stroke-width="2.5"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg>';}} /></div><h1 className="text-2xl font-black text-white">تسجيل الدخول</h1></div>
-                <form onSubmit={e=>{
-                    e.preventDefault(); const fd = new FormData(e.currentTarget); const u = users.find(x => x.username.toLowerCase() === fd.get('u')?.toString().toLowerCase() && x.password === fd.get('p'));
-                    if(u) { setUser(u); addLog('دخول', `قام الموظف ${u.name} بتسجيل الدخول`); } else alert('خطأ!');
-                }} className="space-y-4"><input name="u" placeholder="اسم المستخدم" className={INPUT_CLASS} required /><input name="p" type="password" placeholder="كلمة المرور" className={INPUT_CLASS} required /><button className={BTN_PRIMARY}>دخول</button></form>
-            </div>
-        </div>
-    );
-
-    const renderContent = () => {
-        if(user?.firstLogin && tab !== 'settings') return <div className="p-12 text-center"><Lock size={64} className="mx-auto text-brand-500 mb-6"/><h3 className="text-2xl font-black text-white mb-8">يجب تغيير كلمة المرور أولاً</h3><button onClick={()=>setTab('settings')} className={BTN_PRIMARY}>الإعدادات</button></div>;
-        switch(tab) {
-            case 'home': return can('view_home') ? <div className="grid grid-cols-2 md:grid-cols-4 gap-4"><div className={CARD_CLASS + " p-8 text-center"}><Shirt className="mx-auto text-brand-400 mb-2"/><p className="text-[10px] font-black text-slate-500">الفساتين</p><p className="text-2xl font-black text-white">{dresses.length}</p></div><div className={CARD_CLASS + " p-8 text-center"}><Calendar className="mx-auto text-emerald-400 mb-2"/><p className="text-[10px] font-black text-slate-500">الحجوزات</p><p className="text-2xl font-black text-white">{bookings.length}</p></div><div className={CARD_CLASS + " p-8 text-center"}><ShoppingBag className="mx-auto text-blue-400 mb-2"/><p className="text-[10px] font-black text-slate-500">المبيعات</p><p className="text-2xl font-black text-white">{orders.length}</p></div><div className={CARD_CLASS + " p-8 text-center"}><Users className="mx-auto text-orange-400 mb-2"/><p className="text-[10px] font-black text-slate-500">العملاء</p><p className="text-2xl font-black text-white">{users.length}</p></div></div> : null;
-            case 'finance': return can('view_finance') ? <FinanceManager finance={finance} users={users} dresses={dresses} onAdd={f=>{cloudDb.add(COLLS.FINANCE, f); addLog('مالية', `إضافة ${f.category} بقيمة ${f.amount}`);}} /> : null;
-            case 'dresses_sale': return can('view_dresses_sale') ? <SalesManager orders={orders} onAdd={o=>{cloudDb.add(COLLS.SALES, o); addLog('مبيعات', `طلب تفصيل لـ ${o.brideName}`);}} onUpdate={(id, d)=>{cloudDb.update(COLLS.SALES, id, d); addLog('مبيعات', `تحديث طلب ${id}`);}} onFinanceAdd={f=>{cloudDb.add(COLLS.FINANCE, f); addLog('مالية', `دفع مبيعات: ${f.amount}`);}} /> : null;
-            case 'customers': return can('view_customers') ? <CustomerManager bookings={bookings} orders={orders} /> : null;
-            case 'logs': return can('view_logs') ? <LogManager logs={logs} /> : null;
-            case 'settings': return <SettingsManager user={user} users={users} onAdd={u=>{cloudDb.add(COLLS.USERS, u); addLog('إعدادات', `إضافة موظف ${u.name}`);}} onUpdate={(id, d)=>{cloudDb.update(COLLS.USERS, id, { ...d, firstLogin: d.password==='123' ? true : false }); addLog('إعدادات', `تحديث بيانات ${id}`);}} onDelete={id=>{cloudDb.delete(COLLS.USERS, id); addLog('إعدادات', `حذف موظف ${id}`);}} resetSystem={resetSystem} />;
-            case 'dresses_rent': return can('view_dresses_rent') ? <RentalManager dresses={dresses} onAdd={d=>{cloudDb.add(COLLS.DRESSES, d); addLog('إيجار', `إضافة فستان ${d.name}`);}} onUpdate={(id, d)=>{cloudDb.update(COLLS.DRESSES, id, d); addLog('إيجار', `تحديث حالة فستان ${id}`);}} /> : null;
-            case 'bookings': return can('view_bookings') ? <BookingManager bookings={bookings} dresses={dresses} onAdd={b=>{cloudDb.add(COLLS.BOOKINGS, b); addLog('حجوزات', `حجز لـ ${b.customerName}`);}} onDelete={id=>{if(confirm('حذف الحجز؟')){cloudDb.delete(COLLS.BOOKINGS, id); addLog('حجوزات', `حذف حجز ${id}`);}}} onFinanceAdd={f=>{cloudDb.add(COLLS.FINANCE, f); addLog('مالية', `عربون حجز: ${f.amount}`);}} /> : null;
-            default: return null;
-        }
-    };
-
+  // --- Auth logic ---
+  if (!currentUser) {
     return (
-        <div className="flex flex-col h-screen bg-slate-950 text-slate-100 font-sans" dir="rtl">
-            <header className="fixed top-0 inset-x-0 h-20 bg-slate-900/60 backdrop-blur-3xl border-b border-white/5 flex items-center justify-between px-8 z-[60]"><div className="flex items-center gap-4 font-black text-xl"><Shirt size={22} className="text-brand-500"/> إيلاف</div><button onClick={()=>setUser(null)} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-full text-slate-400 hover:text-red-400 transition-colors"><LogOut size={18}/></button></header>
-            <main className="flex-1 overflow-y-auto pt-28 pb-32 px-6 max-w-5xl mx-auto w-full">{renderContent()}</main>
-            <nav className="fixed bottom-0 inset-x-0 h-20 bg-slate-900/80 backdrop-blur-3xl border-t border-white/5 flex justify-around items-center z-[60]"><button onClick={()=>setTab('home')} className={`flex flex-col items-center gap-1.5 flex-1 ${tab==='home'?'text-brand-500':'text-slate-500'}`}><Home size={22}/><span className="text-[9px] font-black uppercase">الرئيسية</span></button><button onClick={()=>setTab('dresses_rent')} className={`flex flex-col items-center gap-1.5 flex-1 ${tab==='dresses_rent'?'text-brand-500':'text-slate-500'}`}><Shirt size={22}/><span className="text-[9px] font-black uppercase">الإيجار</span></button><button onClick={()=>setTab('finance')} className={`flex flex-col items-center gap-1.5 flex-1 ${tab==='finance'?'text-brand-500':'text-slate-500'}`}><DollarSign size={22}/><span className="text-[9px] font-black uppercase">المالية</span></button><button onClick={()=>setMenuOpen(true)} className="flex flex-col items-center gap-1.5 flex-1 text-slate-500"><MoreHorizontal size={22}/><span className="text-[9px] font-black uppercase">المزيد</span></button></nav>
-            {isMenuOpen && (<div className="fixed inset-0 z-[100] bg-slate-950/98 backdrop-blur-3xl p-10 flex flex-col"><div className="flex justify-between items-center mb-12"><h3 className="text-4xl font-black text-white">الأقسام</h3><button onClick={()=>setMenuOpen(false)} className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center text-white"><X size={32}/></button></div><div className="grid grid-cols-2 gap-6">{NAV_ITEMS.filter(n=>['bookings','dresses_sale','customers','logs','settings','factory','delivery'].includes(n.id)).map(n => <button key={n.id} onClick={()=>{setTab(n.id); setMenuOpen(false)}} className="bg-slate-900 border border-white/5 p-8 rounded-[3rem] flex flex-col items-center gap-4 hover:bg-brand-500/10 transition-all"><span className="text-brand-400">{n.id==='bookings'?<Calendar size={32}/>:n.id==='dresses_sale'?<ShoppingBag size={32}/>:n.id==='customers'?<Users size={32}/>:n.id==='logs'?<FileText size={32}/>:n.id==='factory'?<Factory size={32}/>:n.id==='delivery'?<Truck size={32}/>:<Settings size={32}/>}</span><span className="text-xs font-black">{n.label}</span></button>)}</div></div>)}
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-slate-900 border border-white/10 rounded-[3rem] p-12 shadow-2xl text-center">
+          <div className="w-24 h-24 bg-brand-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl">
+            <Shirt size={48} className="text-white" />
+          </div>
+          <h1 className="text-3xl font-black text-white mb-2">إيلاف سحابي</h1>
+          <p className="text-slate-400 mb-8 font-medium">نظام إدارة فساتين الزفاف</p>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const user = users.find(u => u.username === fd.get('u') && u.password === fd.get('p'));
+            if (user) {
+              setCurrentUser(user);
+              addLog('دخول', `قام الموظف ${user.name} بتسجيل الدخول`);
+            } else {
+              alert('بيانات الدخول غير صحيحة');
+            }
+          }} className="space-y-4">
+            <input name="u" placeholder="اسم المستخدم" className={INPUT_CLASS} required />
+            <input name="p" type="password" placeholder="كلمة المرور" className={INPUT_CLASS} required />
+            <button className={BTN_PRIMARY + " w-full h-14"}>دخول النظام</button>
+          </form>
         </div>
+      </div>
     );
+  }
+
+  // First Login Check
+  if (currentUser.firstLogin) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+        <div className={CARD_CLASS + " max-w-md w-full"}>
+          <h2 className="text-2xl font-black text-white mb-6">تغيير كلمة المرور</h2>
+          <p className="text-slate-400 mb-6">هذا أول دخول لك، يرجى تعيين كلمة مرور جديدة.</p>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            const pass = new FormData(e.currentTarget).get('p') as string;
+            await cloudDb.update(COLLS.USERS, currentUser.id, { password: pass, firstLogin: false });
+            setCurrentUser({ ...currentUser, password: pass, firstLogin: false });
+          }} className="space-y-4">
+            <input name="p" type="password" placeholder="كلمة المرور الجديدة" className={INPUT_CLASS} required />
+            <button className={BTN_PRIMARY + " w-full"}>حفظ كلمة المرور</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans" dir="rtl">
+      {/* Sidebar - Desktop */}
+      <aside className="hidden lg:flex w-72 bg-slate-900 border-l border-white/5 flex-col shadow-2xl">
+        <div className="p-8 flex items-center gap-4">
+          <div className="w-12 h-12 bg-brand-600 rounded-2xl flex items-center justify-center shadow-lg"><Shirt size={28}/></div>
+          <div><h1 className="font-black text-xl">إيلاف</h1><p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Wedding Dress</p></div>
+        </div>
+        <nav className="flex-1 px-4 space-y-2 overflow-y-auto py-4">
+          {NAV_ITEMS.map(item => {
+            if (item.id !== 'home' && !hasPerm(`view_${item.id}`)) return null;
+            const Icon = { Home, Shirt, Calendar, ShoppingBag, Factory, Truck, Users, DollarSign, FileText, Settings }[item.icon] as any;
+            return (
+              <button key={item.id} onClick={() => { setActiveTab(item.id); setSearchQuery(''); }} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all font-bold text-sm ${activeTab === item.id ? 'bg-brand-600 text-white shadow-xl shadow-brand-900/20' : 'text-slate-400 hover:bg-white/5'}`}>
+                <Icon size={20}/> {item.label}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="p-6 border-t border-white/5 bg-slate-900/50">
+          <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl mb-4">
+            <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center"><UserIcon size={20}/></div>
+            <div className="flex-1 truncate"><p className="font-bold text-sm truncate">{currentUser.name}</p><p className="text-[10px] text-slate-500 font-black">{currentUser.role}</p></div>
+          </div>
+          <button onClick={() => setCurrentUser(null)} className="w-full flex items-center justify-center gap-2 py-4 text-red-400 font-bold hover:bg-red-500/10 rounded-2xl transition-all"><LogOut size={18}/> خروج</button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Header */}
+        <header className="h-20 bg-slate-900/50 backdrop-blur-3xl border-b border-white/5 flex items-center justify-between px-8 z-50">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setIsMobileMenuOpen(true)} className="lg:hidden p-2 text-slate-400"><Menu size={24}/></button>
+            <h2 className="text-2xl font-black text-white">{NAV_ITEMS.find(n => n.id === activeTab)?.label}</h2>
+          </div>
+          <div className="flex-1 max-w-md mx-8 relative">
+            <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+            <input 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={`بحث في ${NAV_ITEMS.find(n => n.id === activeTab)?.label}...`} 
+              className={INPUT_CLASS + " pr-12 h-12 text-sm"} 
+            />
+          </div>
+        </header>
+
+        {/* Dynamic Content Area */}
+        <div className="flex-1 overflow-y-auto p-6 md:p-12 pb-32 custom-scrollbar">
+          {activeTab === 'home' && <HomeDashboard dresses={dresses} bookings={bookings} saleOrders={saleOrders} />}
+          {activeTab === 'rent_dresses' && <RentDressesManager dresses={dresses} bookings={bookings} query={searchQuery} hasPerm={hasPerm} addLog={addLog} />}
+          {activeTab === 'rent_bookings' && <RentBookingsManager dresses={dresses} bookings={bookings} query={searchQuery} hasPerm={hasPerm} addLog={addLog} />}
+          {activeTab === 'sale_orders' && <SaleOrdersManager orders={saleOrders} query={searchQuery} hasPerm={hasPerm} addLog={addLog} />}
+          {activeTab === 'factory' && <FactoryManager orders={saleOrders} query={searchQuery} hasPerm={hasPerm} addLog={addLog} />}
+          {activeTab === 'delivery' && <DeliveryReturnManager bookings={bookings} sales={saleOrders} query={searchQuery} hasPerm={hasPerm} currentUser={currentUser} addLog={addLog} />}
+          {activeTab === 'customers' && <CustomersManager bookings={bookings} sales={saleOrders} query={searchQuery} />}
+          {activeTab === 'finance' && <FinanceManager finance={finance} users={users} dresses={dresses} query={searchQuery} hasPerm={hasPerm} addLog={addLog} />}
+          {activeTab === 'logs' && <LogsManager logs={logs} query={searchQuery} />}
+          {activeTab === 'settings' && <SettingsManager user={currentUser} users={users} hasPerm={hasPerm} addLog={addLog} onLogout={() => setCurrentUser(null)} />}
+        </div>
+      </main>
+
+      {/* Mobile Nav Overlay */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/98 backdrop-blur-3xl lg:hidden p-8 flex flex-col animate-fade-in">
+          <div className="flex justify-between items-center mb-12">
+            <h3 className="text-4xl font-black">القائمة</h3>
+            <button onClick={() => setIsMobileMenuOpen(false)} className="p-4 bg-slate-900 rounded-full"><X size={32}/></button>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            {NAV_ITEMS.map(n => {
+              if (n.id !== 'home' && !hasPerm(`view_${n.id}`)) return null;
+              const Icon = { Home, Shirt, Calendar, ShoppingBag, Factory, Truck, Users, DollarSign, FileText, Settings }[n.icon] as any;
+              return (
+                <button key={n.id} onClick={() => { setActiveTab(n.id); setIsMobileMenuOpen(false); }} className={`p-8 rounded-[2.5rem] border ${activeTab === n.id ? 'bg-brand-600 border-brand-500' : 'bg-slate-900 border-white/5'} flex flex-col items-center gap-4`}>
+                  <Icon size={32} /> <span className="font-bold text-xs">{n.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
-const RentalManager = ({ dresses, onAdd, onUpdate }: any) => {
-    const [view, setView] = useState<'STOCK'|'CLEANING'>('STOCK');
-    const [isModal, setModal] = useState(false);
-    return (<div className="space-y-6">
-        <div className="flex justify-between items-center px-2"><h3 className="text-3xl font-black text-white">فساتين الإيجار</h3><button onClick={()=>setModal(true)} className="p-3 bg-brand-600 text-white rounded-2xl shadow-xl"><Plus size={24}/></button></div>
-        <div className="flex gap-2 p-1.5 bg-slate-900 rounded-3xl border border-white/5"><button onClick={()=>setView('STOCK')} className={`flex-1 py-3 rounded-2xl text-xs font-black ${view==='STOCK'?'bg-brand-600 text-white':'text-slate-500'}`}>المخزون</button><button onClick={()=>setView('CLEANING')} className={`flex-1 py-3 rounded-2xl text-xs font-black ${view==='CLEANING'?'bg-brand-600 text-white':'text-slate-500'}`}>المغسلة</button></div>
-        <div className="grid md:grid-cols-2 gap-4">{dresses.filter((d:any)=>view==='CLEANING'?d.status===DressStatus.CLEANING:d.status!==DressStatus.ARCHIVED).map((d:any)=>(<div key={d.id} className={CARD_CLASS}><div className="flex gap-4"><div className="w-20 h-24 bg-slate-800 rounded-2xl flex-shrink-0 flex items-center justify-center text-slate-700"><Shirt size={24}/></div><div className="flex-1"><h4 className="font-black text-white text-lg">{d.name}</h4><span className={BADGE_CLASS + " " + getStatusColor(d.status)}>{d.status}</span><div className="flex gap-2 mt-4">{d.status!=='CLEANING' && <button onClick={()=>onUpdate(d.id, {status: DressStatus.CLEANING})} className="flex-1 py-2 bg-orange-600/10 text-orange-400 rounded-xl text-[10px] font-black">مغسلة</button>}{d.status==='CLEANING' && <button onClick={()=>onUpdate(d.id, {status: DressStatus.AVAILABLE})} className="w-full py-2 bg-emerald-600/10 text-emerald-400 rounded-xl text-[10px] font-black">جاهز</button>}<button onClick={()=>{if(confirm('أرشفة؟')){onUpdate(d.id, {status: DressStatus.ARCHIVED});}}} className="p-2 text-slate-500 hover:text-red-400"><Archive size={16}/></button></div></div></div></div>))}</div>
-        {isModal && (<Modal title="إضافة فستان" onClose={()=>setModal(false)}><form onSubmit={async e=>{e.preventDefault(); const fd = new FormData(e.currentTarget); onAdd({name: fd.get('n'), type: DressType.RENT, status: DressStatus.AVAILABLE, createdAt: new Date().toISOString()}); setModal(false);}} className="space-y-4"><input name="n" placeholder="الاسم" className={INPUT_CLASS} required /><button className={BTN_PRIMARY}>حفظ</button></form></Modal>)}
-    </div>);
-};
+// --- Section Components ---
 
-const BookingManager = ({ bookings, dresses, onAdd, onDelete, onFinanceAdd }: any) => {
-    const [isModal, setModal] = useState(false);
-    const [measurementsModal, setMeasurementsModal] = useState<any>(null);
-    return (<div className="space-y-6">
-        <h3 className="text-3xl font-black text-white px-2">حجوزات الإيجار</h3>
-        <button onClick={()=>setModal(true)} className={BTN_PRIMARY + " h-16 text-lg"}><Plus size={24}/> حجز جديد</button>
-        <div className="grid gap-4">{bookings.filter((b:any)=>b.status===BookingStatus.PENDING).map((b:any)=>(<div key={b.id} className={CARD_CLASS}><div className="flex justify-between items-start mb-4"><div><h4 className="font-black text-white text-xl">{b.customerName}</h4><p className="text-xs text-brand-400 font-bold">{b.customerPhone}</p></div><span className={BADGE_CLASS + " border-brand-500/20 text-brand-400"}>{b.status}</span></div><div className="bg-slate-950/50 p-4 rounded-3xl border border-white/5 mb-4 text-center"><p className="text-[10px] text-slate-500 font-black uppercase">الفستان: {b.dressName}</p><p className="text-sm font-black text-brand-300">{formatDate(b.eventDate)}</p></div><div className="flex justify-between items-center"><button onClick={()=>setMeasurementsModal(b)} className="p-2 bg-slate-800 text-brand-400 rounded-xl hover:bg-brand-600 hover:text-white transition-all"><Ruler size={18}/></button><button onClick={()=>{if(confirm('حذف الحجز؟')){onDelete(b.id);}}} className="p-2 text-slate-600 hover:text-red-400"><Trash2 size={18}/></button></div></div>))}</div>
-        {isModal && (<Modal title="حجز جديد" onClose={()=>setModal(false)}><form onSubmit={async e=>{e.preventDefault(); const fd = new FormData(e.currentTarget); const dr = dresses.find((d:any)=>d.id===fd.get('dr')); const p = Number(fd.get('p')); const d = Number(fd.get('d')); onAdd({customerName: fd.get('n'), customerPhone: fd.get('ph'), dressId: dr.id, dressName: dr.name, eventDate: fd.get('date'), agreedRentalPrice: p, paidDeposit: d, remainingToPay: p-d, status: BookingStatus.PENDING, createdAt: new Date().toISOString()}); if(d>0) onFinanceAdd({amount: d, type: 'INCOME', category: 'عربون حجز', targetName: fd.get('n'), date: new Date().toISOString()}); setModal(false);}} className="space-y-4"><div className="grid grid-cols-2 gap-4"><input name="n" placeholder="الاسم" className={INPUT_CLASS} required /><input name="ph" placeholder="الهاتف" className={INPUT_CLASS} required /></div><select name="dr" className={INPUT_CLASS} required><option value="">اختر الفستان...</option>{dresses.filter((d:any)=>d.status===DressStatus.AVAILABLE).map((d:any)=><option key={d.id} value={d.id}>{d.name}</option>)}</select><div className="grid grid-cols-2 gap-4"><input name="p" type="number" placeholder="السعر" className={INPUT_CLASS} required /><input name="d" type="number" placeholder="العربون" className={INPUT_CLASS} required /></div><input name="date" type="date" className={INPUT_CLASS} required /><button className={BTN_PRIMARY}>تثبيت</button></form></Modal>)}
-        {measurementsModal && <MeasurementsModal title={`مقاسات العروس: ${measurementsModal.customerName}`} data={measurementsModal} onSave={(m:any) => {cloudDb.update(COLLS.BOOKINGS, measurementsModal.id, {measurements: m}); setMeasurementsModal(null);}} onClose={()=>setMeasurementsModal(null)} />}
-    </div>);
-};
+function HomeDashboard({ dresses, bookings, saleOrders }: any) {
+  const today = new Date().toISOString().split('T')[0];
+  const weekLater = new Date(); weekLater.setDate(weekLater.getDate() + 7);
+  const weekLaterStr = weekLater.toISOString().split('T')[0];
+
+  const rentalsThisWeek = bookings.filter((b: any) => b.status === BookingStatus.PENDING && b.deliveryDate >= today && b.deliveryDate <= weekLaterStr);
+  const cleaningRequired = dresses.filter((d: any) => d.status === DressStatus.CLEANING);
+  const overdueSales = saleOrders.filter((s: any) => s.status !== SaleStatus.DELIVERED && s.expectedDeliveryDate < today);
+  const returnsToday = bookings.filter((b: any) => b.status === BookingStatus.ACTIVE && b.eventDate.includes(today));
+  const fittingsThisWeek = bookings.filter((b: any) => b.fittingDate >= today && b.fittingDate <= weekLaterStr);
+
+  const [activeList, setActiveList] = useState<any[]>([]);
+  const [listTitle, setListTitle] = useState('');
+
+  const stats = [
+    { label: 'تسليمات الإسبوع', count: rentalsThisWeek.length, color: 'bg-blue-500', data: rentalsThisWeek, title: 'تسليمات فساتين الإيجار (أسبوع)' },
+    { label: 'تحتاج غسيل', count: cleaningRequired.length, color: 'bg-orange-500', data: cleaningRequired, title: 'فساتين تحتاج تنظيف' },
+    { label: 'تفصيل متأخر', count: overdueSales.length, color: 'bg-red-500', data: overdueSales, title: 'طلبات تفصيل متأخرة' },
+    { label: 'مرتجعات اليوم', count: returnsToday.length, color: 'bg-emerald-500', data: returnsToday, title: 'مرتجعات اليوم المتوقعة' },
+    { label: 'بروفات الإسبوع', count: fittingsThisWeek.length, color: 'bg-purple-500', data: fittingsThisWeek, title: 'بروفات الإسبوع' },
+  ];
+
+  return (
+    <div className="space-y-12 animate-fade-in">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        {stats.map(s => (
+          <button key={s.label} onClick={() => { setActiveList(s.data); setListTitle(s.title); }} className={`${CARD_CLASS} text-center hover:scale-105 transition-all cursor-pointer border-none ${s.color} bg-opacity-20`}>
+            <p className="text-[10px] font-black uppercase text-slate-400 mb-2">{s.label}</p>
+            <h3 className="text-4xl font-black text-white">{s.count}</h3>
+          </button>
+        ))}
+      </div>
+
+      {activeList.length > 0 && (
+        <div className={CARD_CLASS}>
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-xl font-black text-white">{listTitle}</h3>
+            <button onClick={() => setActiveList([])} className="p-2 hover:bg-white/10 rounded-full"><X size={20}/></button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-right">
+              <thead className="text-slate-500 text-xs uppercase border-b border-white/5">
+                <tr>
+                  <th className="pb-4">الاسم/الكود</th>
+                  <th className="pb-4">التاريخ</th>
+                  <th className="pb-4 text-left">التفاصيل</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {activeList.map((item, idx) => (
+                  <tr key={idx} className="hover:bg-white/5 transition-colors">
+                    <td className="py-4 font-bold">{item.customerName || item.brideName || item.name}</td>
+                    <td className="py-4 text-xs font-black text-brand-400">{item.deliveryDate || item.expectedDeliveryDate || '-'}</td>
+                    <td className="py-4 text-left text-xs text-slate-400">{item.dressName || item.factoryCode || item.style}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RentDressesManager({ dresses, bookings, query, hasPerm, addLog }: any) {
+  const [subTab, setSubTab] = useState<'STOCK' | 'ARCHIVE' | 'EVAL'>('STOCK');
+  const [modal, setModal] = useState<any>(null);
+
+  const filtered = dresses.filter((d: any) => d.type === DressType.RENT && (d.name.includes(query) || d.style.includes(query)) && (
+    subTab === 'STOCK' ? d.status !== DressStatus.ARCHIVED && d.status !== DressStatus.SOLD :
+    subTab === 'ARCHIVE' ? d.status === DressStatus.ARCHIVED || d.status === DressStatus.SOLD : true
+  ));
+
+  const sortedByEval = [...dresses].filter(d => d.type === DressType.RENT).sort((a, b) => (b.rentalCount || 0) - (a.rentalCount || 0));
+
+  const handleSave = async (e: any) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const name = fd.get('n') as string;
+    if (dresses.some((d: any) => d.name === name && d.id !== modal?.id)) return alert('الاسم مكرر!');
+    const data = { name, style: fd.get('s'), factoryPrice: Number(fd.get('p')), type: DressType.RENT, status: DressStatus.AVAILABLE, rentalCount: 0, createdAt: new Date().toISOString() };
+    await cloudDb.add(COLLS.DRESSES, data);
+    addLog('إضافة فستان', `تم إضافة فستان جديد: ${name}`);
+    setModal(null);
+  };
+
+  const handleSell = async (d: Dress, e: any) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const price = Number(fd.get('price'));
+    await cloudDb.update(COLLS.DRESSES, d.id, { status: DressStatus.SOLD, salePrice: price, customerName: fd.get('cn'), customerPhone: fd.get('cp') });
+    await cloudDb.add(COLLS.FINANCE, { amount: price, type: 'INCOME', category: `بيع فستان إيجار: ${d.name}`, date: new Date().toISOString() });
+    addLog('بيع فستان', `تم بيع الفستان ${d.name} للعميل ${fd.get('cn')}`);
+    setModal(null);
+  };
+
+  return (
+    <div className="space-y-8 animate-fade-in">
+      <div className="flex gap-2 p-1 bg-slate-900 rounded-3xl w-fit">
+        <button onClick={() => setSubTab('STOCK')} className={`px-6 py-2 rounded-2xl text-xs font-bold transition-all ${subTab === 'STOCK' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>المتاحة</button>
+        <button onClick={() => setSubTab('ARCHIVE')} className={`px-6 py-2 rounded-2xl text-xs font-bold transition-all ${subTab === 'ARCHIVE' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>المؤرشفة/المباعة</button>
+        <button onClick={() => setSubTab('EVAL')} className={`px-6 py-2 rounded-2xl text-xs font-bold transition-all ${subTab === 'EVAL' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>التقييمات</button>
+      </div>
+
+      {subTab === 'STOCK' && hasPerm('add_rent_dress') && (
+        <button onClick={() => setModal({ type: 'ADD' })} className={BTN_PRIMARY}><Plus size={20}/> إضافة فستان إيجار</button>
+      )}
+
+      {subTab === 'EVAL' ? (
+        <div className={CARD_CLASS}>
+          <table className="w-full text-right">
+            <thead className="text-slate-500 text-[10px] uppercase"><tr><th className="pb-4">الفستان</th><th className="pb-4">عدد مرات التأجير</th></tr></thead>
+            <tbody>
+              {sortedByEval.map(d => (
+                <tr key={d.id} className="border-b border-white/5">
+                  <td className="py-4 font-bold">{d.name}</td>
+                  <td className="py-4 font-black text-brand-400">{d.rentalCount || 0} مرة</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filtered.map(d => (
+            <div key={d.id} className={CARD_CLASS}>
+              <div className="flex justify-between items-start mb-4">
+                <h4 className="text-xl font-black">{d.name}</h4>
+                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${d.status === DressStatus.AVAILABLE ? 'bg-emerald-500/10 text-emerald-400' : 'bg-orange-500/10 text-orange-400'}`}>{d.status}</span>
+              </div>
+              <p className="text-xs text-slate-500 font-bold mb-6">الستايل: {d.style} • السعر: {formatCurrency(d.factoryPrice)}</p>
+              <div className="flex flex-wrap gap-2">
+                {d.status === DressStatus.AVAILABLE ? (
+                  <button onClick={() => cloudDb.update(COLLS.DRESSES, d.id, { status: DressStatus.CLEANING })} className="flex-1 py-2 bg-orange-600/10 text-orange-400 rounded-xl text-[10px] font-black">غسيل</button>
+                ) : d.status === DressStatus.CLEANING ? (
+                  <button onClick={() => cloudDb.update(COLLS.DRESSES, d.id, { status: DressStatus.AVAILABLE })} className="flex-1 py-2 bg-emerald-600/10 text-emerald-400 rounded-xl text-[10px] font-black">جاهز</button>
+                ) : null}
+                {subTab === 'STOCK' && (
+                  <>
+                    <button onClick={() => setModal({ type: 'DELETE_OPT', dress: d })} className="p-2 bg-red-500/10 text-red-400 rounded-xl"><Trash2 size={18}/></button>
+                  </>
+                )}
+                {subTab === 'ARCHIVE' && (
+                  <button onClick={() => { if(confirm('تأكيد الاستعادة؟')) cloudDb.update(COLLS.DRESSES, d.id, { status: DressStatus.AVAILABLE }); }} className="flex-1 py-2 bg-brand-600 text-white rounded-xl text-[10px] font-black">استعادة كمتاح</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {modal?.type === 'ADD' && (
+        <Modal title="إضافة فستان إيجار" onClose={() => setModal(null)}>
+          <form onSubmit={handleSave} className="space-y-4">
+            <input name="n" placeholder="اسم الفستان (مميز)" className={INPUT_CLASS} required />
+            <input name="s" placeholder="ستايل الفستان" className={INPUT_CLASS} required />
+            <input name="p" type="number" placeholder="سعر الشراء" className={INPUT_CLASS} required />
+            <button className={BTN_PRIMARY + " w-full h-14"}>حفظ</button>
+          </form>
+        </Modal>
+      )}
+
+      {modal?.type === 'DELETE_OPT' && (
+        <Modal title={`خيارات الحذف: ${modal.dress.name}`} onClose={() => setModal(null)}>
+          <div className="grid gap-3">
+            <button onClick={() => { if(confirm('حذف نهائي؟')) { cloudDb.delete(COLLS.DRESSES, modal.dress.id); setModal(null); } }} className="p-6 bg-red-600/10 text-red-500 rounded-3xl font-black text-sm hover:bg-red-600 hover:text-white transition-all">حذف نهائي</button>
+            <button onClick={() => { cloudDb.update(COLLS.DRESSES, modal.dress.id, { status: DressStatus.ARCHIVED }); setModal(null); }} className="p-6 bg-slate-800 text-white rounded-3xl font-black text-sm hover:bg-slate-700 transition-all">نقل للأرشيف</button>
+            <button onClick={() => setModal({ type: 'SELL', dress: modal.dress })} className="p-6 bg-emerald-600/10 text-emerald-500 rounded-3xl font-black text-sm hover:bg-emerald-600 hover:text-white transition-all">بيع الفستان</button>
+          </div>
+        </Modal>
+      )}
+
+      {modal?.type === 'SELL' && (
+        <Modal title={`بيع الفستان: ${modal.dress.name}`} onClose={() => setModal(null)}>
+          <form onSubmit={(e) => handleSell(modal.dress, e)} className="space-y-4">
+            <input name="price" type="number" placeholder="قيمة البيع" className={INPUT_CLASS} required />
+            <input name="cn" placeholder="اسم العميل" className={INPUT_CLASS} required />
+            <input name="cp" placeholder="رقم هاتف العميل" className={INPUT_CLASS} required />
+            <button className={BTN_PRIMARY + " w-full h-14"}>تأكيد البيع</button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function RentBookingsManager({ dresses, bookings, query, hasPerm, addLog }: any) {
+  const [subTab, setSubTab] = useState<'CURRENT' | 'PAST'>('CURRENT');
+  const [modal, setModal] = useState<any>(null);
+
+  const filtered = bookings.filter((b: any) => 
+    (b.customerName.includes(query) || b.dressName.includes(query)) && 
+    (subTab === 'CURRENT' ? b.status !== BookingStatus.COMPLETED : b.status === BookingStatus.COMPLETED)
+  );
+
+  const handleSave = async (e: any) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const dressId = fd.get('dressId') as string;
+    const eventDate = fd.get('eventDate') as string;
+    const dress = dresses.find((d: any) => d.id === dressId);
+
+    // Conflict Check
+    const hasConflict = bookings.some((b: any) => {
+      if (b.dressId !== dressId || b.status === BookingStatus.CANCELLED) return false;
+      const bDate = new Date(b.eventDate);
+      const newDate = new Date(eventDate);
+      const diff = Math.abs(bDate.getTime() - newDate.getTime()) / (1000 * 3600 * 24);
+      return diff <= 2;
+    });
+
+    if (hasConflict && !confirm('هذا الفستان محجوز في تاريخ قريب (أقل من يومين). هل تريد الاستمرار؟')) return;
+
+    const price = Number(fd.get('price'));
+    const deposit = Number(fd.get('deposit'));
+    const data = {
+      customerName: fd.get('n'), customerPhone: fd.get('ph'), customerAddress: fd.get('addr'),
+      dressId, dressName: dress.name,
+      eventDate, 
+      deliveryDate: fd.get('deliveryDate'),
+      fittingDate: fd.get('fittingDate'),
+      rentalPrice: price, paidDeposit: deposit, remainingToPay: price - deposit,
+      notes: fd.get('notes'),
+      status: BookingStatus.PENDING,
+      createdAt: new Date().toISOString()
+    };
+    await cloudDb.add(COLLS.BOOKINGS, data);
+    if (deposit > 0) await cloudDb.add(COLLS.FINANCE, { amount: deposit, type: 'INCOME', category: `عربون حجز: ${dress.name}`, date: new Date().toISOString() });
+    addLog('حجز جديد', `تم حجز الفستان ${dress.name} للعروس ${fd.get('n')}`);
+    setModal(null);
+  };
+
+  return (
+    <div className="space-y-8 animate-fade-in">
+      <div className="flex gap-2 p-1 bg-slate-900 rounded-3xl w-fit">
+        <button onClick={() => setSubTab('CURRENT')} className={`px-6 py-2 rounded-2xl text-xs font-bold ${subTab === 'CURRENT' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>الحجوزات الحالية</button>
+        <button onClick={() => setSubTab('PAST')} className={`px-6 py-2 rounded-2xl text-xs font-bold ${subTab === 'PAST' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>الحجوزات السابقة</button>
+      </div>
+
+      {subTab === 'CURRENT' && hasPerm('add_booking') && (
+        <button onClick={() => setModal({ type: 'ADD' })} className={BTN_PRIMARY}><Plus size={20}/> تسجيل حجز جديد</button>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filtered.map(b => (
+          <div key={b.id} className={CARD_CLASS}>
+            <div className="flex justify-between items-start mb-4">
+              <div><h4 className="text-xl font-black">{b.customerName}</h4><p className="text-[10px] text-brand-400 font-black">{b.customerPhone}</p></div>
+              <span className={BADGE_CLASS + " " + (b.status === BookingStatus.ACTIVE ? 'bg-emerald-500/10 text-emerald-400' : 'bg-blue-500/10 text-blue-400')}>{b.status}</span>
+            </div>
+            <div className="bg-slate-950/50 p-4 rounded-3xl border border-white/5 mb-6 space-y-2">
+              <p className="text-xs text-slate-500 font-bold">الفستان: <span className="text-white">{b.dressName}</span></p>
+              <p className="text-xs text-slate-500 font-bold">التسليم: <span className="text-brand-400 font-black">{b.deliveryDate}</span></p>
+              <p className="text-xs text-slate-500 font-bold">البروفة: <span className="text-purple-400 font-black">{b.fittingDate}</span></p>
+              <p className="text-xs text-red-400 font-black pt-2">المتبقي: {formatCurrency(b.remainingToPay)}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setModal({ type: 'MEASURE', booking: b })} className="flex-1 py-3 bg-white/5 rounded-2xl text-[10px] font-black hover:bg-white/10 flex items-center justify-center gap-2"><Ruler size={14}/> المقاسات</button>
+              <button onClick={() => { if(confirm('إلغاء الحجز؟')) cloudDb.update(COLLS.BOOKINGS, b.id, { status: BookingStatus.CANCELLED }); }} className="p-3 bg-red-500/10 text-red-400 rounded-2xl"><Trash2 size={18}/></button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {modal?.type === 'ADD' && (
+        <Modal title="تسجيل حجز جديد" onClose={() => setModal(null)} size="lg">
+          <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input name="n" placeholder="اسم العروس" className={INPUT_CLASS} required />
+            <input name="ph" placeholder="رقم الهاتف" className={INPUT_CLASS} required />
+            <input name="addr" placeholder="العنوان (اختياري)" className={INPUT_CLASS} />
+            <select name="dressId" className={INPUT_CLASS} required>
+              <option value="">اختر الفستان...</option>
+              {dresses.filter(d => d.type === DressType.RENT && d.status !== DressStatus.ARCHIVED).map(d => (
+                <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
+              ))}
+            </select>
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-500 font-black mr-2">تاريخ المناسبة</label>
+              <input name="eventDate" type="date" className={INPUT_CLASS} required />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-500 font-black mr-2">تاريخ التسليم</label>
+              <input name="deliveryDate" type="date" className={INPUT_CLASS} required />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-500 font-black mr-2">تاريخ البروفة</label>
+              <input name="fittingDate" type="date" className={INPUT_CLASS} required />
+            </div>
+            <input name="price" type="number" placeholder="سعر الإيجار" className={INPUT_CLASS} required />
+            <input name="deposit" type="number" placeholder="قيمة العربون" className={INPUT_CLASS} required />
+            <textarea name="notes" placeholder="ملاحظات التعديلات" className={INPUT_CLASS + " md:col-span-2"} />
+            <button className={BTN_PRIMARY + " md:col-span-2 h-14"}>تثبيت الحجز</button>
+          </form>
+        </Modal>
+      )}
+
+      {modal?.type === 'MEASURE' && (
+        <Modal title={`المقاسات: ${modal.booking.customerName || modal.booking.brideName}`} onClose={() => setModal(null)} size="lg">
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const m: any = {};
+            MEASUREMENT_FIELDS.forEach(f => m[f.id] = fd.get(f.id));
+            const coll = modal.booking ? COLLS.BOOKINGS : COLLS.SALES;
+            await cloudDb.update(coll, modal.booking?.id || modal.order?.id, { measurements: m });
+            addToast('تم حفظ المقاسات', 'success');
+            setModal(null);
+          }} className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {MEASUREMENT_FIELDS.map(f => (
+              <div key={f.id} className="space-y-1">
+                <label className="text-[10px] text-slate-500 font-black mr-1">{f.label}</label>
+                {f.id === 'orderNotes' || f.id === 'materials' ? (
+                  <textarea name={f.id} defaultValue={(modal.booking || modal.order)?.measurements?.[f.id]} className={INPUT_CLASS + " h-24"} />
+                ) : (
+                  <input name={f.id} defaultValue={(modal.booking || modal.order)?.measurements?.[f.id]} className={INPUT_CLASS} />
+                )}
+              </div>
+            ))}
+            <button className={BTN_PRIMARY + " md:col-span-3 h-14 mt-4"}>حفظ المقاسات</button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function SaleOrdersManager({ orders, query, hasPerm, addLog }: any) {
+  const [subTab, setSubTab] = useState<'CURRENT' | 'PAST'>('CURRENT');
+  const [modal, setModal] = useState<any>(null);
+
+  const filtered = orders.filter((o: any) => 
+    (o.brideName.includes(query) || o.factoryCode.includes(query)) && 
+    (subTab === 'CURRENT' ? o.status !== SaleStatus.DELIVERED : o.status === SaleStatus.DELIVERED)
+  );
+
+  const handleSave = async (e: any) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const code = fd.get('code') as string;
+    if (orders.some((o: any) => o.factoryCode === code && o.status !== SaleStatus.DELIVERED)) return alert('كود المصنع مكرر!');
+    
+    const sellPrice = Number(fd.get('sp'));
+    const deposit = Number(fd.get('dep'));
+    const data = {
+      factoryCode: code, brideName: fd.get('n'), bridePhone: fd.get('ph'),
+      description: fd.get('desc'), expectedDeliveryDate: fd.get('date'),
+      sellPrice, factoryPrice: Number(fd.get('fp')), deposit, remainingFromBride: sellPrice - deposit,
+      status: SaleStatus.DESIGNING, factoryStatus: FactoryPaymentStatus.UNPAID, factoryDepositPaid: 0,
+      orderDate: new Date().toISOString()
+    };
+    await cloudDb.add(COLLS.SALES, data);
+    if (deposit > 0) await cloudDb.add(COLLS.FINANCE, { amount: deposit, type: 'INCOME', category: `عربون تفصيل: ${code}`, date: new Date().toISOString() });
+    addLog('طلب تفصيل', `تم تسجيل طلب تفصيل كود ${code} للعروس ${fd.get('n')}`);
+    setModal(null);
+  };
+
+  return (
+    <div className="space-y-8 animate-fade-in">
+      <div className="flex gap-2 p-1 bg-slate-900 rounded-3xl w-fit">
+        <button onClick={() => setSubTab('CURRENT')} className={`px-6 py-2 rounded-2xl text-xs font-bold ${subTab === 'CURRENT' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>الطلبات الحالية</button>
+        <button onClick={() => setSubTab('PAST')} className={`px-6 py-2 rounded-2xl text-xs font-bold ${subTab === 'PAST' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>الطلبات السابقة</button>
+      </div>
+
+      {subTab === 'CURRENT' && hasPerm('add_sale') && (
+        <button onClick={() => setModal({ type: 'ADD' })} className={BTN_PRIMARY}><Plus size={20}/> تسجيل طلب تفصيل جديد</button>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filtered.map(o => (
+          <div key={o.id} className={CARD_CLASS}>
+            <div className="flex justify-between items-start mb-4">
+              <div><h4 className="text-xl font-black">{o.brideName}</h4><p className="text-[10px] text-brand-400 font-black">{o.bridePhone}</p></div>
+              <span className={BADGE_CLASS + " " + (o.status === SaleStatus.DESIGNING ? 'bg-purple-500/10 text-purple-400' : 'bg-brand-500/10 text-brand-400')}>{o.status}</span>
+            </div>
+            <div className="bg-slate-950/50 p-4 rounded-3xl border border-white/5 mb-6 space-y-2">
+              <p className="text-xs text-slate-500 font-bold">كود المصنع: <span className="text-white font-mono">{o.factoryCode}</span></p>
+              <p className="text-xs text-slate-500 font-bold">الموعد: <span className="text-brand-400 font-black">{o.expectedDeliveryDate}</span></p>
+              <p className="text-xs text-red-400 font-black pt-2">المتبقي: {formatCurrency(o.remainingFromBride)}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setModal({ type: 'MEASURE', order: o })} className="flex-1 py-3 bg-white/5 rounded-2xl text-[10px] font-black hover:bg-white/10 flex items-center justify-center gap-2"><Ruler size={14}/> المقاسات</button>
+              <button onClick={() => { if(confirm('حذف الطلب؟')) cloudDb.delete(COLLS.SALES, o.id); }} className="p-3 bg-red-500/10 text-red-400 rounded-2xl"><Trash2 size={18}/></button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {modal?.type === 'ADD' && (
+        <Modal title="طلب تفصيل جديد" onClose={() => setModal(null)} size="lg">
+          <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input name="code" placeholder="كود الفستان" className={INPUT_CLASS} required />
+            <input name="n" placeholder="اسم العروس" className={INPUT_CLASS} required />
+            <input name="ph" placeholder="رقم الهاتف" className={INPUT_CLASS} required />
+            <input name="date" type="date" className={INPUT_CLASS} required />
+            <input name="sp" type="number" placeholder="سعر البيع" className={INPUT_CLASS} required />
+            <input name="fp" type="number" placeholder="سعر المصنع" className={INPUT_CLASS} required />
+            <input name="dep" type="number" placeholder="العربون" className={INPUT_CLASS} required />
+            <textarea name="desc" placeholder="وصف الفستان" className={INPUT_CLASS + " md:col-span-2"} required />
+            <button className={BTN_PRIMARY + " md:col-span-2 h-14"}>تثبيت الطلب</button>
+          </form>
+        </Modal>
+      )}
+
+      {modal?.type === 'MEASURE' && (
+        <Modal title={`المقاسات: ${modal.order.brideName}`} onClose={() => setModal(null)} size="lg">
+           <form onSubmit={async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const m: any = {};
+            MEASUREMENT_FIELDS.forEach(f => m[f.id] = fd.get(f.id));
+            await cloudDb.update(COLLS.SALES, modal.order.id, { measurements: m });
+            setModal(null);
+          }} className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {MEASUREMENT_FIELDS.map(f => (
+              <div key={f.id} className="space-y-1">
+                <label className="text-[10px] text-slate-500 font-black mr-1">{f.label}</label>
+                {f.id === 'orderNotes' || f.id === 'materials' ? (
+                  <textarea name={f.id} defaultValue={modal.order.measurements?.[f.id]} className={INPUT_CLASS + " h-24"} />
+                ) : (
+                  <input name={f.id} defaultValue={modal.order.measurements?.[f.id]} className={INPUT_CLASS} />
+                )}
+              </div>
+            ))}
+            <button className={BTN_PRIMARY + " md:col-span-3 h-14 mt-4"}>حفظ المقاسات</button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function FactoryManager({ orders, query, hasPerm, addLog }: any) {
+  const [subTab, setSubTab] = useState<'PENDING' | 'COMPLETED'>('PENDING');
+  const [modal, setModal] = useState<any>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const filtered = orders.filter((o: any) => 
+    o.factoryCode.includes(query) && 
+    (subTab === 'PENDING' ? o.factoryStatus !== FactoryPaymentStatus.PAID : o.factoryStatus === FactoryPaymentStatus.PAID)
+  );
+
+  const totalBalance = filtered.reduce((acc, curr) => acc + (curr.factoryPrice - curr.factoryDepositPaid), 0);
+
+  const handleDepositSubmit = async (e: any) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    let totalPaid = 0;
+    for (const id of selectedIds) {
+      const order = orders.find((o: any) => o.id === id);
+      const amt = Number(fd.get(`amt_${id}`));
+      if (amt > 0) {
+        const newPaid = order.factoryDepositPaid + amt;
+        await cloudDb.update(COLLS.SALES, id, { 
+          factoryDepositPaid: newPaid, 
+          factoryStatus: newPaid >= order.factoryPrice ? FactoryPaymentStatus.PAID : FactoryPaymentStatus.PARTIAL 
+        });
+        totalPaid += amt;
+      }
+    }
+    await cloudDb.add(COLLS.FINANCE, { amount: totalPaid, type: 'EXPENSE', category: `دفع عربون مصنع لأكواد: ${selectedIds.length}`, date: new Date().toISOString() });
+    addLog('دفع للمصنع', `تم دفع عربون إجمالي ${totalPaid} للمصنع`);
+    setModal(null); setSelectedIds([]);
+  };
+
+  const handleFinalSubmit = async () => {
+    let totalPaid = 0;
+    for (const id of selectedIds) {
+      const order = orders.find((o: any) => o.id === id);
+      const remaining = order.factoryPrice - order.factoryDepositPaid;
+      await cloudDb.update(COLLS.SALES, id, { 
+        factoryDepositPaid: order.factoryPrice, 
+        factoryStatus: FactoryPaymentStatus.PAID,
+        factoryPaidDate: new Date().toISOString()
+      });
+      totalPaid += remaining;
+    }
+    await cloudDb.add(COLLS.FINANCE, { amount: totalPaid, type: 'EXPENSE', category: `تصفية حساب مصنع لأكواد: ${selectedIds.length}`, date: new Date().toISOString() });
+    setModal(null); setSelectedIds([]);
+  };
+
+  return (
+    <div className="space-y-8 animate-fade-in">
+       <div className="flex gap-2 p-1 bg-slate-900 rounded-3xl w-fit">
+        <button onClick={() => setSubTab('PENDING')} className={`px-6 py-2 rounded-2xl text-xs font-bold ${subTab === 'PENDING' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>مستحقات حالية</button>
+        <button onClick={() => setSubTab('COMPLETED')} className={`px-6 py-2 rounded-2xl text-xs font-bold ${subTab === 'COMPLETED' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>خالص للمصنع</button>
+      </div>
+
+      {subTab === 'PENDING' && (
+        <div className="flex flex-wrap gap-4">
+          <button disabled={selectedIds.length === 0} onClick={() => setModal({ type: 'DEPOSIT' })} className={BTN_PRIMARY}><DollarSign size={20}/> دفع عربون ({selectedIds.length})</button>
+          <button disabled={selectedIds.length === 0} onClick={() => { if(confirm('تصفية الحساب للمختار؟')) handleFinalSubmit(); }} className={BTN_SECONDARY}><CheckCircle size={20}/> دفع تحصيل ({selectedIds.length})</button>
+          <div className="bg-slate-900 border border-white/5 px-6 py-3 rounded-2xl flex items-center gap-3">
+             <span className="text-[10px] font-black text-slate-500">إجمالي المتبقي:</span>
+             <span className="text-xl font-black text-white">{formatCurrency(totalBalance)}</span>
+          </div>
+        </div>
+      )}
+
+      <div className={CARD_CLASS}>
+        <table className="w-full text-right">
+          <thead className="text-slate-500 text-[10px] uppercase border-b border-white/5">
+            <tr>
+              {subTab === 'PENDING' && <th className="pb-4"></th>}
+              <th className="pb-4">كود المصنع</th>
+              <th className="pb-4">العروس</th>
+              <th className="pb-4">سعر المصنع</th>
+              <th className="pb-4">المدفوع</th>
+              <th className="pb-4 text-left">المتبقي</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {filtered.map(o => (
+              <tr key={o.id} className="hover:bg-white/5 cursor-pointer" onClick={() => subTab === 'PENDING' && setSelectedIds(prev => prev.includes(o.id) ? prev.filter(i => i !== o.id) : [...prev, o.id])}>
+                {subTab === 'PENDING' && <td className="py-4"><div className={`w-5 h-5 rounded border ${selectedIds.includes(o.id) ? 'bg-brand-600 border-brand-500' : 'border-slate-700'}`}/></td>}
+                <td className="py-4 font-mono font-bold">{o.factoryCode}</td>
+                <td className="py-4 text-xs font-bold text-slate-400">{o.brideName}</td>
+                <td className="py-4 text-xs">{formatCurrency(o.factoryPrice)}</td>
+                <td className="py-4 text-xs text-emerald-400">{formatCurrency(o.factoryDepositPaid)}</td>
+                <td className="py-4 text-xs text-red-400 font-black text-left">{formatCurrency(o.factoryPrice - o.factoryDepositPaid)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {modal?.type === 'DEPOSIT' && (
+        <Modal title="دفع عربون للمصنع" onClose={() => setModal(null)}>
+          <form onSubmit={handleDepositSubmit} className="space-y-4">
+            <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
+              {selectedIds.map(id => {
+                const o = orders.find((x: any) => x.id === id);
+                return (
+                  <div key={id} className="p-4 bg-slate-950/50 rounded-2xl border border-white/5 flex items-center justify-between">
+                    <div><p className="text-xs font-black">{o.factoryCode}</p><p className="text-[10px] text-slate-500">المتبقي: {formatCurrency(o.factoryPrice - o.factoryDepositPaid)}</p></div>
+                    <input name={`amt_${id}`} type="number" placeholder="المبلغ" className={INPUT_CLASS + " w-24 h-10"} />
+                  </div>
+                );
+              })}
+            </div>
+            <button className={BTN_PRIMARY + " w-full h-14"}>تأكيد الدفع</button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function DeliveryReturnManager({ bookings, sales, query, hasPerm, currentUser, addLog }: any) {
+  const [subTab, setSubTab] = useState<'PICKUP' | 'RETURN' | 'ARCHIVE'>('PICKUP');
+  const [modal, setModal] = useState<any>(null);
+
+  const pendingPickups = [
+    ...bookings.filter((b: any) => b.status === BookingStatus.PENDING).map(b => ({ ...b, type: 'RENT' })),
+    ...sales.filter((s: any) => s.status !== SaleStatus.DELIVERED).map(s => ({ ...s, type: 'SALE' }))
+  ].sort((a, b) => new Date(a.eventDate || a.expectedDeliveryDate).getTime() - new Date(b.eventDate || b.expectedDeliveryDate).getTime());
+
+  const activeReturns = bookings.filter((b: any) => b.status === BookingStatus.ACTIVE).map(b => ({ ...b, type: 'RENT' }));
+
+  const archiveList = [
+    ...bookings.filter((b: any) => b.status === BookingStatus.COMPLETED).map(b => ({ ...b, type: 'RENT' })),
+    ...sales.filter((s: any) => s.status === SaleStatus.DELIVERED).map(s => ({ ...s, type: 'SALE' }))
+  ].sort((a, b) => new Date(b.actualReturnDate || b.actualDeliveryDate || 0).getTime() - new Date(a.actualReturnDate || a.actualDeliveryDate || 0).getTime());
+
+  const handlePickup = async (e: any) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const item = modal.item;
+    const balance = Number(fd.get('balance'));
+
+    if (item.type === 'RENT') {
+      await cloudDb.update(COLLS.BOOKINGS, item.id, { 
+        status: BookingStatus.ACTIVE, 
+        remainingToPay: item.remainingToPay - balance,
+        securityDeposit: { type: fd.get('secType') as DepositType, detail: fd.get('secDetail') as string },
+        staffName: currentUser.name,
+        actualPickupDate: new Date().toISOString()
+      });
+    } else {
+      await cloudDb.update(COLLS.SALES, item.id, { 
+        status: SaleStatus.DELIVERED, 
+        remainingFromBride: item.remainingFromBride - balance,
+        actualDeliveryDate: new Date().toISOString()
+      });
+    }
+
+    if (balance > 0) await cloudDb.add(COLLS.FINANCE, { amount: balance, type: 'INCOME', category: `تحصيل عند التسليم: ${item.customerName || item.brideName}`, date: new Date().toISOString() });
+    addLog('تسليم', `تم تسليم ${item.type === 'RENT' ? 'حجز' : 'طلب'} لـ ${item.customerName || item.brideName}`);
+    setModal(null);
+  };
+
+  const handleReturn = async (e: any) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const b = modal.booking;
+    const balance = Number(fd.get('balance'));
+    const damageFee = Number(fd.get('damageFee') || 0);
+
+    await cloudDb.update(COLLS.BOOKINGS, b.id, { 
+      status: BookingStatus.COMPLETED, 
+      remainingToPay: b.remainingToPay - balance,
+      damageFee,
+      actualReturnDate: new Date().toISOString()
+    });
+
+    // Update dress status to Cleaning
+    const dress: any = await cloudDb.getDoc(COLLS.DRESSES, b.dressId); // added await
+    await cloudDb.update(COLLS.DRESSES, b.dressId, { status: DressStatus.CLEANING, rentalCount: (dress?.rentalCount || 0) + 1 });
+
+    if (balance > 0) await cloudDb.add(COLLS.FINANCE, { amount: balance, type: 'INCOME', category: `تحصيل عند الإرجاع: ${b.customerName}`, date: new Date().toISOString() });
+    if (damageFee > 0) await cloudDb.add(COLLS.FINANCE, { amount: damageFee, type: 'INCOME', category: `غرامة تلفيات: ${b.customerName}`, date: new Date().toISOString() });
+    
+    addLog('استرجاع', `تم استرجاع فستان العروس ${b.customerName}`);
+    setModal(null);
+  };
+
+  return (
+    <div className="space-y-8 animate-fade-in">
+       <div className="flex gap-2 p-1 bg-slate-900 rounded-3xl w-fit">
+        <button onClick={() => setSubTab('PICKUP')} className={`px-6 py-2 rounded-2xl text-xs font-bold ${subTab === 'PICKUP' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>تسليم</button>
+        <button onClick={() => setSubTab('RETURN')} className={`px-6 py-2 rounded-2xl text-xs font-bold ${subTab === 'RETURN' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>إرجاع</button>
+        <button onClick={() => setSubTab('ARCHIVE')} className={`px-6 py-2 rounded-2xl text-xs font-bold ${subTab === 'ARCHIVE' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>الأرشيف</button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {(subTab === 'PICKUP' ? pendingPickups : subTab === 'RETURN' ? activeReturns : archiveList).map((item: any) => (
+          <div key={item.id} className={CARD_CLASS + ` border-r-4 ${item.type === 'RENT' ? 'border-brand-500' : 'border-blue-500'}`}>
+            <div className="flex justify-between items-start mb-4">
+              <h4 className="text-xl font-black">{item.customerName || item.brideName}</h4>
+              <span className="text-[10px] font-black uppercase text-slate-500">{item.type === 'RENT' ? 'إيجار' : 'بيع'}</span>
+            </div>
+            <p className="text-xs font-bold text-slate-400 mb-6">{item.dressName || item.factoryCode} • {item.eventDate || item.expectedDeliveryDate}</p>
+            
+            {subTab === 'PICKUP' && (
+              <button onClick={() => setModal({ type: 'PICKUP', item })} className={BTN_PRIMARY + " w-full"}>تسليم للعروس</button>
+            )}
+            {subTab === 'RETURN' && (
+              <div className="flex gap-2">
+                 <button onClick={() => cloudDb.update(COLLS.BOOKINGS, item.id, { status: BookingStatus.PENDING })} className="flex-1 py-3 bg-slate-800 text-white rounded-2xl text-[10px] font-black hover:bg-slate-700">تراجع عن التسليم</button>
+                 <button onClick={() => setModal({ type: 'RETURN', booking: item })} className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black shadow-lg">استرجاع من العروس</button>
+              </div>
+            )}
+            {subTab === 'ARCHIVE' && (
+               <div className="text-[10px] text-slate-500 font-bold space-y-1">
+                  <p>الموظف: {item.staffName || '-'}</p>
+                  <p>تاريخ الاستلام: {item.actualPickupDate || item.actualDeliveryDate || '-'}</p>
+                  <p>تاريخ الإرجاع: {item.actualReturnDate || '-'}</p>
+               </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {modal?.type === 'PICKUP' && (
+        <Modal title={`تسليم: ${modal.item.customerName || modal.item.brideName}`} onClose={() => setModal(null)}>
+          <form onSubmit={handlePickup} className="space-y-4">
+            <div className="p-4 bg-slate-950 rounded-2xl border border-white/5 mb-4">
+               <p className="text-xs text-slate-500 font-bold mb-1">المتبقي على العروس</p>
+               <h3 className="text-3xl font-black text-white">{formatCurrency(modal.item.remainingToPay || modal.item.remainingFromBride)}</h3>
+            </div>
+            <input name="balance" type="number" placeholder="المبلغ المحصل الآن" className={INPUT_CLASS} required />
+            
+            {modal.item.type === 'RENT' && (
+              <>
+                <div className="border-t border-white/5 pt-4 space-y-4">
+                  <label className="text-[10px] text-slate-500 font-black">نوع الأمانة (الإيجار فقط)</label>
+                  <select name="secType" className={INPUT_CLASS}>
+                    <option value={DepositType.CASH}>مبلغ مالي</option>
+                    <option value={DepositType.DOCUMENT}>مستند</option>
+                    <option value={DepositType.GOLD}>قطعة ذهب</option>
+                    <option value={DepositType.OTHER}>أخرى</option>
+                  </select>
+                  <input name="secDetail" placeholder="تفاصيل الأمانة" className={INPUT_CLASS} required />
+                </div>
+              </>
+            )}
+            <button className={BTN_PRIMARY + " w-full h-14"}>تأكيد التسليم</button>
+          </form>
+        </Modal>
+      )}
+
+      {modal?.type === 'RETURN' && (
+        <Modal title={`استرجاع: ${modal.booking.customerName}`} onClose={() => setModal(null)}>
+          <form onSubmit={handleReturn} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 mb-4">
+               <div className="p-4 bg-slate-950 rounded-2xl border border-white/5">
+                  <p className="text-[10px] text-slate-500 font-bold mb-1">المتبقي</p>
+                  <p className="text-xl font-black text-white">{formatCurrency(modal.booking.remainingToPay)}</p>
+               </div>
+               <div className="p-4 bg-slate-950 rounded-2xl border border-white/5">
+                  <p className="text-[10px] text-slate-500 font-bold mb-1">الأمانة</p>
+                  <p className="text-xs font-black text-brand-400">{modal.booking.securityDeposit?.detail}</p>
+               </div>
+            </div>
+            
+            <input name="balance" type="number" placeholder="تحصيل المتبقي (إن وجد)" className={INPUT_CLASS} />
+            
+            <div className="border-t border-white/5 pt-4">
+               <label className="flex items-center gap-3 p-4 bg-slate-800/50 rounded-2xl cursor-pointer">
+                  <input type="checkbox" onChange={(e) => setModal({ ...modal, hasDamage: e.target.checked })} />
+                  <span className="text-xs font-black">يوجد تلف في الفستان؟</span>
+               </label>
+            </div>
+
+            {modal.hasDamage && (
+              <input name="damageFee" type="number" placeholder="قيمة التلفيات" className={INPUT_CLASS} required />
+            )}
+
+            <button className={BTN_PRIMARY + " w-full h-14"}>تأكيد الاسترجاع</button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function FinanceManager({ finance, users, dresses, query, hasPerm, addLog }: any) {
+  const [modal, setModal] = useState<any>(null);
+  const [subTab, setSubTab] = useState<'LOGS' | 'ANALYTICS'>('LOGS');
+
+  const handleSave = async (e: any) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const type = fd.get('type') as 'INCOME' | 'EXPENSE';
+    const amount = Number(fd.get('amt'));
+    const category = fd.get('cat') as string;
+
+    const data: any = {
+      type, amount, category, 
+      notes: fd.get('notes'),
+      date: fd.get('date') || new Date().toISOString(),
+    };
+
+    if (category === 'رواتب') data.targetUser = fd.get('targetUser');
+    if (category === 'تنظيف' || category === 'ترزي') data.relatedDresses = Array.from(e.currentTarget.querySelectorAll('input[type="checkbox"]:checked')).map((c: any) => c.value);
+
+    await cloudDb.add(COLLS.FINANCE, data);
+    addLog('حركة مالية', `تسجيل ${type === 'INCOME' ? 'وارد' : 'منصرف'}: ${category} بقيمة ${amount}`);
+    setModal(null);
+  };
+
+  const totals = useMemo(() => {
+    const inc = finance.filter((f: any) => f.type === 'INCOME').reduce((a: any, b: any) => a + b.amount, 0);
+    const exp = finance.filter((f: any) => f.type === 'EXPENSE').reduce((a: any, b: any) => a + b.amount, 0);
+    return { income: inc, expense: exp, profit: inc - exp };
+  }, [finance]);
+
+  return (
+    <div className="space-y-8 animate-fade-in">
+       <div className="flex gap-2 p-1 bg-slate-900 rounded-3xl w-fit">
+        <button onClick={() => setSubTab('LOGS')} className={`px-6 py-2 rounded-2xl text-xs font-bold ${subTab === 'LOGS' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>سجل العمليات</button>
+        <button onClick={() => setSubTab('ANALYTICS')} className={`px-6 py-2 rounded-2xl text-xs font-bold ${subTab === 'ANALYTICS' ? 'bg-brand-600 text-white' : 'text-slate-500'}`}>التحليل المالي</button>
+      </div>
+
+      {subTab === 'LOGS' ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+             <div className={CARD_CLASS + " bg-emerald-500/10 border-emerald-500/20"}>
+                <p className="text-[10px] font-black text-emerald-400 mb-2">إجمالي الإيرادات</p>
+                <h3 className="text-3xl font-black">{formatCurrency(totals.income)}</h3>
+             </div>
+             <div className={CARD_CLASS + " bg-red-500/10 border-red-500/20"}>
+                <p className="text-[10px] font-black text-red-400 mb-2">إجمالي المصروفات</p>
+                <h3 className="text-3xl font-black">{formatCurrency(totals.expense)}</h3>
+             </div>
+             <div className={CARD_CLASS + " bg-brand-500/10 border-brand-500/20"}>
+                <p className="text-[10px] font-black text-brand-400 mb-2">صافي الربح</p>
+                <h3 className="text-3xl font-black">{formatCurrency(totals.profit)}</h3>
+             </div>
+          </div>
+
+          {hasPerm('add_finance') && (
+            <div className="flex gap-4">
+               <button onClick={() => setModal({ type: 'ADD' })} className={BTN_PRIMARY}><Plus size={20}/> إضافة حركة مالية</button>
+            </div>
+          )}
+
+          <div className={CARD_CLASS}>
+            <table className="w-full text-right">
+              <thead className="text-slate-500 text-[10px] uppercase border-b border-white/5">
+                <tr><th>التاريخ</th><th>النوع</th><th>التصنيف</th><th>المبلغ</th><th className="text-left">الملاحظات</th></tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {finance.filter((f: any) => f.category.includes(query)).map((f: any) => (
+                  <tr key={f.id} className="hover:bg-white/5">
+                    <td className="py-4 text-xs font-bold text-slate-400">{f.date.split('T')[0]}</td>
+                    <td className="py-4"><span className={`px-3 py-1 rounded-full text-[10px] font-black ${f.type === 'INCOME' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>{f.type === 'INCOME' ? 'وارد' : 'منصرف'}</span></td>
+                    <td className="py-4 font-bold text-xs">{f.category}</td>
+                    <td className="py-4 text-xs font-black">{formatCurrency(f.amount)}</td>
+                    <td className="py-4 text-xs text-slate-500 text-left">{f.notes}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+           <div className={CARD_CLASS}>
+              <h3 className="text-xl font-black mb-8">نظرة عامة</h3>
+              <div className="h-64">
+                 <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={[{ name: 'المالية', income: totals.income, expense: totals.expense }]}>
+                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
+                       <XAxis dataKey="name" /> <YAxis /> <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none' }} />
+                       <Bar dataKey="income" name="إيرادات" fill="#10b981" radius={[8, 8, 0, 0]} />
+                       <Bar dataKey="expense" name="مصروفات" fill="#ef4444" radius={[8, 8, 0, 0]} />
+                    </BarChart>
+                 </ResponsiveContainer>
+              </div>
+           </div>
+           <div className={CARD_CLASS}>
+              <h3 className="text-xl font-black mb-8">توزيع المصروفات</h3>
+              <div className="h-64 flex items-center justify-center">
+                 <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                       <Pie data={[{ name: 'إيراد', value: totals.income }, { name: 'مصروف', value: totals.expense }]} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                          <Cell fill="#10b981" /><Cell fill="#ef4444" />
+                       </Pie>
+                       <Tooltip />
+                    </PieChart>
+                 </ResponsiveContainer>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {modal?.type === 'ADD' && (
+        <Modal title="إضافة حركة مالية" onClose={() => setModal(null)}>
+          <form onSubmit={handleSave} className="space-y-4">
+            <select name="type" className={INPUT_CLASS} onChange={(e) => setModal({ ...modal, type: e.target.value })}>
+              <option value="EXPENSE">منصرف</option>
+              <option value="INCOME">وارد</option>
+            </select>
+            
+            {modal.type === 'INCOME' ? (
+              <input name="cat" placeholder="نوع الوارد" className={INPUT_CLASS} required />
+            ) : (
+              <select name="cat" className={INPUT_CLASS} onChange={(e) => setModal({ ...modal, category: e.target.value })}>
+                <option value="">اختر التصنيف...</option>
+                <option value="فواتير">فواتير</option>
+                <option value="رواتب">رواتب</option>
+                <option value="تنظيف">تنظيف</option>
+                <option value="ترزي">ترزي</option>
+                <option value="أخرى">أخرى</option>
+              </select>
+            )}
+
+            {modal.category === 'فواتير' && (
+              <select name="sub" className={INPUT_CLASS}>
+                <option value="ايجار">ايجار</option>
+                <option value="كهرباء">كهرباء</option>
+                <option value="ماء">ماء</option>
+                <option value="صيانة">صيانة</option>
+                <option value="اخرى">اخرى</option>
+              </select>
+            )}
+
+            {modal.category === 'رواتب' && (
+              <select name="targetUser" className={INPUT_CLASS}>
+                <option value="">اختر الموظف...</option>
+                {users.map((u: any) => <option key={u.id} value={u.name}>{u.name}</option>)}
+              </select>
+            )}
+
+            {(modal.category === 'تنظيف' || modal.category === 'ترزي') && (
+              <div className="p-4 bg-slate-950 rounded-2xl border border-white/5 space-y-2 max-h-48 overflow-y-auto">
+                <p className="text-[10px] text-slate-500 font-black mb-2">اختر الفساتين:</p>
+                {dresses.filter((d: any) => d.type === DressType.RENT).map((d: any) => (
+                  <label key={d.id} className="flex items-center gap-3 p-2 hover:bg-white/5 cursor-pointer rounded-xl transition-all">
+                    <input type="checkbox" value={d.name} className="w-5 h-5 accent-brand-500" />
+                    <span className="text-xs font-bold">{d.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <input name="amt" type="number" placeholder="المبلغ" className={INPUT_CLASS} required />
+            <input name="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} className={INPUT_CLASS} />
+            <textarea name="notes" placeholder="ملاحظات إضافية" className={INPUT_CLASS} />
+            <button className={BTN_PRIMARY + " w-full h-14"}>تثبيت العملية</button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function CustomersManager({ bookings, sales, query }: any) {
+  const customers = useMemo(() => {
+    const list: any[] = [];
+    bookings.forEach((b: any) => {
+      if (!list.find(c => c.phone === b.customerPhone)) {
+        list.push({ id: b.id, name: b.customerName, phone: b.customerPhone, type: 'إيجار' });
+      }
+    });
+    sales.forEach((s: any) => {
+      if (!list.find(c => c.phone === s.bridePhone)) {
+        list.push({ id: s.id, name: s.brideName, phone: s.bridePhone, type: 'بيع' });
+      }
+    });
+    return list.filter(c => c.name.includes(query) || c.phone.includes(query));
+  }, [bookings, sales, query]);
+
+  return (
+    <div className={CARD_CLASS}>
+      <table className="w-full text-right">
+        <thead className="text-slate-500 text-[10px] uppercase border-b border-white/5">
+          <tr><th>الاسم</th><th>الهاتف</th><th className="text-left">نوع التعامل</th></tr>
+        </thead>
+        <tbody className="divide-y divide-white/5">
+          {customers.map(c => (
+            <tr key={c.id}>
+              <td className="py-4 font-bold">{c.name}</td>
+              <td className="py-4 font-mono text-slate-400">{c.phone}</td>
+              <td className="py-4 text-left"><span className="px-3 py-1 bg-brand-500/10 text-brand-400 rounded-full text-[10px] font-black">{c.type}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LogsManager({ logs, query }: any) {
+  return (
+    <div className={CARD_CLASS}>
+      <div className="space-y-4">
+        {logs.filter((l: any) => l.username.includes(query) || l.action.includes(query)).reverse().slice(0, 50).map((l: any) => (
+          <div key={l.id} className="p-4 bg-slate-950/50 rounded-2xl border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-2">
+            <div>
+               <p className="text-sm font-bold text-brand-400">{l.action}</p>
+               <p className="text-[10px] text-slate-500">{l.details}</p>
+            </div>
+            <div className="text-left">
+               <p className="text-[10px] font-black text-white">{l.username}</p>
+               <p className="text-[10px] text-slate-500">{new Date(l.timestamp).toLocaleString('ar-EG')}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SettingsManager({ user, users, hasPerm, addLog, onLogout }: any) {
+  const [modal, setModal] = useState<any>(null);
+
+  const handleAddUser = async (e: any) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const perms = Array.from(e.currentTarget.querySelectorAll('input[type="checkbox"]:checked')).map((c: any) => c.value);
+    await cloudDb.add(COLLS.USERS, {
+      name: fd.get('name'), username: fd.get('username'), password: '123',
+      role: UserRole.EMPLOYEE, permissions: perms, firstLogin: true
+    });
+    addLog('إضافة موظف', `تم إضافة موظف جديد: ${fd.get('name')}`);
+    setModal(null);
+  };
+
+  return (
+    <div className="space-y-12 animate-fade-in">
+       <div className={CARD_CLASS}>
+          <h3 className="text-xl font-black mb-6">الحساب الشخصي</h3>
+          <button onClick={() => setModal({ type: 'CHANGE_PASS' })} className={BTN_PRIMARY}>تغيير كلمة السر</button>
+       </div>
+
+       {hasPerm('admin_reset') && (
+         <div className="space-y-8">
+            <div className="flex justify-between items-center px-4">
+               <h3 className="text-xl font-black">إدارة المستخدمين</h3>
+               <button onClick={() => setModal({ type: 'ADD_USER' })} className={BTN_PRIMARY}><UserPlus size={20}/> إضافة موظف</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               {users.map((u: any) => (
+                 <div key={u.id} className={CARD_CLASS}>
+                    <div className="flex justify-between items-center mb-4">
+                       <div><p className="font-bold">{u.name}</p><p className="text-[10px] text-slate-500">@{u.username}</p></div>
+                       <div className="flex gap-2">
+                          <button onClick={() => { if(confirm('تصفير كلمة السر لـ 123؟')) cloudDb.update(COLLS.USERS, u.id, { password: '123', firstLogin: true }); }} className="p-2 text-brand-400 hover:bg-brand-500/10 rounded-xl transition-all"><Key size={18}/></button>
+                          {u.id !== user.id && <button onClick={() => { if(confirm('حذف الموظف؟')) cloudDb.delete(COLLS.USERS, u.id); }} className="p-2 text-red-400 hover:bg-red-500/10 rounded-xl transition-all"><Trash2 size={18}/></button>}
+                       </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                       {u.permissions.map((p: string) => <span key={p} className="text-[8px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">{p}</span>)}
+                    </div>
+                 </div>
+               ))}
+            </div>
+
+            <div className="p-10 bg-red-950/20 border border-red-900 rounded-[3rem] space-y-4">
+               <div className="flex items-center gap-4 text-red-500"><AlertTriangle size={32}/><h3 className="text-xl font-black">تنبيه منطقة الخطر</h3></div>
+               <p className="text-sm text-slate-400 font-bold max-w-lg">خيار "ضبط المصنع" سيقوم بحذف كافة البيانات السحابية المسجلة نهائياً (فساتين، حجوزات، مالية). لا يمكن التراجع!</p>
+               <button onClick={() => { if(confirm('سيتم حذف كل شيء نهائياً. هل أنت متأكد؟!')) { cloudDb.clearAll(); alert('تم تصفير النظام'); window.location.reload(); } }} className="w-full h-14 border-2 border-red-500/20 text-red-500 rounded-3xl font-black hover:bg-red-500 hover:text-white transition-all">إرجاع النظام لنقطة الصفر</button>
+            </div>
+         </div>
+       )}
+
+       {modal?.type === 'CHANGE_PASS' && (
+         <Modal title="تغيير كلمة السر" onClose={() => setModal(null)}>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const p = new FormData(e.currentTarget).get('p') as string;
+              await cloudDb.update(COLLS.USERS, user.id, { password: p });
+              addToast('تم التغيير بنجاح', 'success'); setModal(null);
+            }} className="space-y-4">
+               <input name="p" type="password" placeholder="كلمة المرور الجديدة" className={INPUT_CLASS} required />
+               <button className={BTN_PRIMARY + " w-full h-14"}>حفظ</button>
+            </form>
+         </Modal>
+       )}
+
+       {modal?.type === 'ADD_USER' && (
+         <Modal title="إضافة موظف جديد" onClose={() => setModal(null)} size="lg">
+            <form onSubmit={handleAddUser} className="space-y-6">
+               <div className="grid grid-cols-2 gap-4">
+                  <input name="name" placeholder="اسم الموظف" className={INPUT_CLASS} required />
+                  <input name="username" placeholder="اسم المستخدم" className={INPUT_CLASS} required />
+               </div>
+               <div className="space-y-3">
+                  <p className="text-[10px] font-black text-slate-500 mr-2 uppercase">الصلاحيات الممنوحة:</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 bg-slate-950 p-4 rounded-3xl border border-white/5 max-h-60 overflow-y-auto">
+                    {PERMISSIONS_LIST.map(p => (
+                      <label key={p.id} className="flex items-center gap-3 p-3 hover:bg-white/5 cursor-pointer rounded-2xl transition-all">
+                        <input type="checkbox" value={p.id} className="w-6 h-6 accent-brand-500" />
+                        <span className="text-xs font-bold">{p.label}</span>
+                      </label>
+                    ))}
+                  </div>
+               </div>
+               <button className={BTN_PRIMARY + " w-full h-14"}>تثبيت الموظف</button>
+            </form>
+         </Modal>
+       )}
+    </div>
+  );
+}
+
+// Utility Toast (Custom Implementation)
+function addToast(msg: string, type: 'success' | 'error') {
+  alert(msg); // Placeholder - could be better UI
+}

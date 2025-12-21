@@ -2,10 +2,9 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { 
   getFirestore, collection, onSnapshot, 
-  doc, setDoc, addDoc, deleteDoc, 
-  query, Firestore, orderBy, limit
+  doc, setDoc, addDoc, deleteDoc, getDoc as firestoreGetDoc,
+  getDocs, query, Firestore 
 } from 'firebase/firestore';
-import type { User } from '../types';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCmMFroJp5aHg3HGhrdn8T-lf08YIiLxdU",
@@ -21,7 +20,7 @@ try {
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     db = getFirestore(app);
 } catch (error) {
-    console.error("Firebase fail:", error);
+    console.error("Firebase init fail:", error);
 }
 
 export const isConfigured = !!db;
@@ -49,6 +48,13 @@ export const cloudDb = {
             return () => {};
         }
     },
+    // Add getDoc helper for fetching a single document
+    getDoc: async (collectionName: string, id: string) => {
+        if (!db) throw new Error("Firestore down");
+        const docRef = doc(db, collectionName, id);
+        const docSnap = await firestoreGetDoc(docRef);
+        return docSnap.exists() ? { ...docSnap.data(), id: docSnap.id } : null;
+    },
     add: async (collectionName: string, data: any) => {
         if (!db) throw new Error("Firestore down");
         const docRef = await addDoc(collection(db, collectionName), data);
@@ -62,6 +68,16 @@ export const cloudDb = {
     delete: async (collectionName: string, id: string) => {
         if (!db) throw new Error("Firestore down");
         await deleteDoc(doc(db, collectionName, id));
+    },
+    // Add clearAll helper for resetting system data
+    clearAll: async () => {
+        if (!db) return;
+        for (const collName of Object.values(COLLS)) {
+            const q = query(collection(db, collName));
+            const snapshot = await getDocs(q);
+            const deletePromises = snapshot.docs.map(d => deleteDoc(doc(db, collName, d.id)));
+            await Promise.all(deletePromises);
+        }
     },
     COLLS
 };
