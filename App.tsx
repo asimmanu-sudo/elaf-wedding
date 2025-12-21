@@ -100,7 +100,7 @@ export default function App() {
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8">
         <div className="w-full max-w-sm text-center mb-12 animate-fade-in">
           <img src="/Logo.png" alt="Elaf Logo" className="w-48 h-48 mx-auto object-contain drop-shadow-2xl mb-8" />
-          <h1 className="text-3xl font-black text-white mb-2">إيلاف سحابي</h1>
+          <h1 className="text-3xl font-black text-white mb-2">إيلاف لفساتين الزفاف</h1>
           <p className="text-slate-500 font-bold tracking-tight">Wedding Dress Management System</p>
         </div>
         <div className="w-full max-w-sm bg-slate-900/50 backdrop-blur-xl border border-white/5 p-10 rounded-[3.5rem] shadow-2xl">
@@ -250,7 +250,7 @@ function HomeView({ dresses, bookings, sales }: any) {
     { label: 'تسليمات الإيجار', count: rentalsWeek.length, data: rentalsWeek, title: 'تسليمات الإسبوع', color: 'border-blue-500/20 bg-blue-500/10 text-blue-400' },
     { label: 'محتاجة غسيل', count: cleaning.length, data: cleaning, title: 'فساتين للغسيل', color: 'border-orange-500/20 bg-orange-500/10 text-orange-400' },
     { label: 'تفصيل متأخر', count: lateSales.length, data: lateSales, title: 'طلبات بيع متأخرة', color: 'border-red-500/20 bg-red-500/10 text-red-400' },
-    { label: 'مرتجعات اليوم', count: returnsToday.length, data: returnsToday, title: 'مرتجعات اليوم', color: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400' },
+    { label: 'مرتجعات اليوم', count: rentalsWeek.length > 0 ? returnsToday.length : 0, data: returnsToday, title: 'مرتجعات اليوم', color: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400' },
     { label: 'بروفات الإسبوع', count: fittingsWeek.length, data: fittingsWeek, title: 'بروفات الإسبوع', color: 'border-purple-500/20 bg-purple-500/10 text-purple-400' },
   ];
 
@@ -964,7 +964,13 @@ function FinanceView({ finance, dresses, users, bookings, query, hasPerm, showTo
     const fd = new FormData(e.currentTarget);
     const type = fd.get('t') as 'INCOME' | 'EXPENSE';
     const amount = Math.abs(Number(fd.get('a')));
-    const data: any = { date: fd.get('d') || today, type, amount, category: fd.get('c') as string, notes: fd.get('n') };
+    const data: any = { 
+      date: fd.get('d') || today, 
+      type, 
+      amount, 
+      category: fd.get('c') as string, 
+      notes: fd.get('n') 
+    };
 
     if (data.category === 'رواتب') data.targetUser = fd.get('tu');
     if (['تنظيف', 'ترزي'].includes(data.category)) {
@@ -972,7 +978,8 @@ function FinanceView({ finance, dresses, users, bookings, query, hasPerm, showTo
     }
 
     await cloudDb.add(COLLS.FINANCE, data);
-    showToast('تم تسجيل العملية المالية بنجاح'); setModal(null);
+    showToast('تم تسجيل العملية المالية بنجاح'); 
+    setModal(null);
   };
 
   return (
@@ -983,7 +990,7 @@ function FinanceView({ finance, dresses, users, bookings, query, hasPerm, showTo
       </div>
 
       {hasPerm('add_finance') && (
-        <button onClick={() => setModal({ type: 'ADD' })} className={BTN_PRIMARY + " w-full !rounded-[2.5rem]"}><Plus size={22}/> إضافة وارد / منصرف</button>
+        <button onClick={() => setModal({ type: 'ADD', entryType: 'INCOME' })} className={BTN_PRIMARY + " w-full !rounded-[2.5rem]"}><Plus size={22}/> إضافة وارد / منصرف</button>
       )}
 
       {subTab === 'logs' ? (
@@ -1024,11 +1031,11 @@ function FinanceView({ finance, dresses, users, bookings, query, hasPerm, showTo
       {modal?.type === 'ADD' && (
         <Modal title="إضافة عملية مالية" onClose={() => setModal(null)}>
            <form onSubmit={handleAdd} className="space-y-4">
-              <select name="t" className={INPUT_CLASS} onChange={e => setModal({...modal, type: e.target.value})}>
+              <select name="t" className={INPUT_CLASS} onChange={e => setModal({...modal, entryType: e.target.value})}>
                  <option value="INCOME">وارد (+)</option>
                  <option value="EXPENSE">منصرف (-)</option>
               </select>
-              {modal.type === 'EXPENSE' ? (
+              {modal.entryType === 'EXPENSE' ? (
                 <>
                   <select name="c" className={INPUT_CLASS} required onChange={e => setModal({...modal, sc: e.target.value})}>
                     <option value="">اختر التصنيف...</option>
@@ -1067,7 +1074,7 @@ function FinanceView({ finance, dresses, users, bookings, query, hasPerm, showTo
                  <input name="d" type="date" defaultValue={today} className={INPUT_CLASS} required />
               </div>
               <textarea name="n" placeholder="ملاحظات تفصيلية..." className={INPUT_CLASS + " h-24"} />
-              <button className={BTN_PRIMARY + " w-full h-16 mt-4 shadow-xl"}>تثبيت العملية المالية</button>
+              <button className={BTN_PRIMARY + " w-full h-16 text-lg mt-4 shadow-xl"}>تثبيت العملية المالية</button>
            </form>
         </Modal>
       )}
