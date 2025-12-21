@@ -55,8 +55,9 @@ const generateSeedData = () => {
   const bookingPast: Booking = {
       id: 'BK-001', customerId: 'CUST-0', customerName: customerNames[0], customerPhone: '0501111111',
       dressId: 'DR-001', dressName: 'فستان سندريلا الملكي',
-      eventDate: daysFromNow(-10), bookingDate: daysFromNow(-20),
-      agreedRentalPrice: 1500, paidDeposit: 500, remainingToPay: 0,
+      eventDate: daysFromNow(-10), deliveryDate: daysFromNow(-7), bookingDate: daysFromNow(-20),
+      fitting1Date: daysFromNow(-15), fitting2Date: daysFromNow(-12), fitting1Done: true, fitting2Done: true,
+      rentalPrice: 1500, agreedRentalPrice: 1500, paidDeposit: 500, remainingToPay: 0,
       paymentMethod: PaymentMethod.CASH_EGP,
       status: BookingStatus.COMPLETED, notes: 'تم الاسترجاع بحالة جيدة', createdAt: daysFromNow(-20)
   };
@@ -66,9 +67,10 @@ const generateSeedData = () => {
   const bookingActive: Booking = {
       id: 'BK-002', customerId: 'CUST-1', customerName: customerNames[1], customerPhone: '0502222222',
       dressId: 'DR-003', dressName: 'فستان السهرة الذهبي',
-      eventDate: daysFromNow(0),
+      eventDate: daysFromNow(0), deliveryDate: daysFromNow(3),
+      fitting1Date: daysFromNow(-5), fitting2Date: daysFromNow(-2), fitting1Done: true, fitting2Done: true,
       bookingDate: daysFromNow(-15),
-      agreedRentalPrice: 1000, paidDeposit: 500, remainingToPay: 0,
+      rentalPrice: 1000, agreedRentalPrice: 1000, paidDeposit: 500, remainingToPay: 0,
       paymentMethod: PaymentMethod.CASH_EGP,
       status: BookingStatus.ACTIVE, notes: 'العروسة استلمت الفستان أمس', createdAt: daysFromNow(-15)
   };
@@ -77,22 +79,23 @@ const generateSeedData = () => {
   const bookingFuture: Booking = {
       id: 'BK-003', customerId: 'CUST-2', customerName: customerNames[2], customerPhone: '0503333333',
       dressId: 'DR-002', dressName: 'فستان الدانتيل الأبيض',
-      eventDate: daysFromNow(5),
+      eventDate: daysFromNow(5), deliveryDate: daysFromNow(8),
+      fitting1Date: daysFromNow(-5), fitting2Date: daysFromNow(2), fitting1Done: false, fitting2Done: false,
       bookingDate: daysFromNow(-5),
-      agreedRentalPrice: 1200, paidDeposit: 600, remainingToPay: 600,
+      rentalPrice: 1200, agreedRentalPrice: 1200, paidDeposit: 600, remainingToPay: 600,
       paymentMethod: PaymentMethod.BANK_EGP,
       status: BookingStatus.PENDING, notes: 'تجهيز الفستان قبل يومين', createdAt: daysFromNow(-5)
   };
   bookings.push(bookingFuture);
 
   // --- 5. Sales (Design) ---
-  // Fix: Removed expectedDeliveryDate as it does not exist in the SaleOrder interface
   saleOrders.push({
       id: 'SALE-001', factoryCode: 'FAC-101', brideName: customerNames[3], bridePhone: '0505555555',
       factoryPrice: 3000, factoryDepositPaid: 1000,
       sellPrice: 5000, deposit: 2000, remainingFromBride: 3000,
       status: SaleStatus.DESIGNING, factoryStatus: FactoryPaymentStatus.PARTIAL,
-      image: '', notes: 'مقاسات خاصة', dressDescription: 'فستان سواريه مطرز', orderDate: daysFromNow(-10), createdAt: daysFromNow(-10)
+      image: '', notes: 'مقاسات خاصة', description: 'فستان سواريه مطرز', dressDescription: 'فستان سواريه مطرز', 
+      expectedDeliveryDate: daysFromNow(14), orderDate: daysFromNow(-10), createdAt: daysFromNow(-10)
   });
 
   return { dresses, bookings, deliveries, finance, customers, audit, saleOrders, users };
