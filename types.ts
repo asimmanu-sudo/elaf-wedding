@@ -6,12 +6,8 @@ export enum BookingStatus { PENDING = 'قبل التسليم', ACTIVE = 'مع ا
 export enum DepositType { CASH = 'مبلغ مالي', DOCUMENT = 'مستند', GOLD = 'قطعة ذهب', OTHER = 'أخرى' }
 export enum SaleStatus { DESIGNING = 'قيد التصميم', READY = 'جاهز للاستلام', DELIVERED = 'تم التسليم للعروس', CANCELLED = 'ملغي' }
 export enum FactoryPaymentStatus { UNPAID = 'غير مدفوع', PARTIAL = 'مدفوع جزئياً', PAID = 'خالص' }
-
-// Added missing PaymentMethod enum used in mockDb.ts
-export enum PaymentMethod {
-  CASH_EGP = 'كاش (جنيه)',
-  BANK_EGP = 'تحويل بنكي (جنيه)'
-}
+export enum DressCondition { NEW = 'جديد (أول لبسة)', USED = 'مستعمل' }
+export enum PaymentMethod { CASH_EGP = 'كاش (جنيه)', BANK_EGP = 'تحويل بنكي' }
 
 export interface User {
   id: string;
@@ -23,21 +19,12 @@ export interface User {
   firstLogin?: boolean;
 }
 
-// Added missing Customer interface used in mockDb.ts
-export interface Customer {
-  id: string;
-  name: string;
-  phone: string;
-  notes: string;
-  firstSeenDate: string;
-}
-
 export interface Measurements {
-  neck: string; shoulder: string; chest: string; underChest: string;
-  胸部飞镖: string; waist: string; backLength: string; hips: string;
-  fullLength: string; sleeve: string; armhole: string; arm: string;
-  forearm: string; wrist: string; legOpening: string;
-  bustType: string; skirtType: string; materials: string; orderNotes: string;
+  neck?: string; shoulder?: string; chest?: string; underChest?: string;
+  chestDart?: string; waist?: string; backLength?: string; hips?: string;
+  fullLength?: string; sleeve?: string; armhole?: string; arm?: string;
+  forearm?: string; wrist?: string; legOpening?: string;
+  bustType?: string; skirtType?: string; materials?: string; orderNotes?: string;
 }
 
 export interface Dress {
@@ -46,17 +33,16 @@ export interface Dress {
   style: string;
   type: DressType;
   factoryPrice: number;
+  rentalPrice?: number;
   status: DressStatus;
   rentalCount: number;
+  condition: DressCondition;
+  imageUrl?: string;
+  videoUrl?: string;
+  createdAt: string;
   salePrice?: number;
   customerName?: string;
   customerPhone?: string;
-  createdAt: string;
-  // Added properties to resolve "Object literal may only specify known properties" in mockDb.ts
-  rentalPrice?: number;
-  image?: string;
-  notes?: string;
-  purchaseDate?: string;
 }
 
 export interface SaleOrder {
@@ -76,11 +62,6 @@ export interface SaleOrder {
   factoryDepositPaid: number;
   measurements?: Measurements;
   orderDate: string;
-  // Added properties to resolve "Object literal may only specify known properties" in mockDb.ts
-  image?: string;
-  notes?: string;
-  dressDescription?: string;
-  createdAt?: string;
 }
 
 export interface Booking {
@@ -108,15 +89,18 @@ export interface Booking {
     value?: number;
   };
   damageFee?: number;
-  staffName?: string;
   actualPickupDate?: string;
   actualReturnDate?: string;
-  // Added properties to resolve "Object literal may only specify known properties" in mockDb.ts
-  customerId?: string;
-  bookingDate?: string;
-  agreedRentalPrice?: number;
-  paymentMethod?: PaymentMethod;
-  createdAt?: string;
+  staffName?: string;
+  createdAt: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  notes?: string;
+  firstSeenDate: string;
 }
 
 export interface FinanceRecord {
@@ -137,6 +121,4 @@ export interface AuditLog {
   username: string;
   timestamp: string;
   details: string;
-  // Added userId property used in mockDb.ts
-  userId?: string;
 }

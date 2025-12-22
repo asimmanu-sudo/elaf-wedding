@@ -70,20 +70,20 @@ export const cloudDb = {
     },
     clearAll: async () => {
         if (!db) return;
-        // Delete all collections
+        // Nuclear cleanup
         for (const collName of Object.values(COLLS)) {
             const q = query(collection(db, collName));
             const snapshot = await getDocs(q);
             const deletePromises = snapshot.docs.map(d => deleteDoc(doc(db, collName, d.id)));
             await Promise.all(deletePromises);
         }
-        // Re-create default Admin
+        // Re-seed master admin
         await addDoc(collection(db, COLLS.USERS), {
           name: 'مدير النظام',
           username: 'admin',
           password: '123',
           role: 'ADMIN',
-          permissions: ['view_home', 'view_rent_dresses', 'add_rent_dress', 'delete_rent_dress', 'view_rent_bookings', 'add_booking', 'view_sale_orders', 'add_sale', 'view_factory', 'view_delivery', 'view_finance', 'add_finance', 'view_customers', 'view_logs', 'admin_reset'],
+          permissions: ['ALL'],
           firstLogin: true
         });
     },
