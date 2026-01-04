@@ -1,4 +1,3 @@
-
 export enum UserRole { ADMIN = 'ADMIN', EMPLOYEE = 'EMPLOYEE' }
 export enum DressType { SALE = 'بيع', RENT = 'إيجار' }
 export enum DressStatus { AVAILABLE = 'متاح', RENTED = 'مؤجر', CLEANING = 'يحتاج تنظيف', SOLD = 'مباع', ARCHIVED = 'مؤرشف' }
@@ -20,6 +19,7 @@ export interface User {
 }
 
 export interface Measurements {
+  unit?: 'cm' | 'inch';
   neck?: string; shoulder?: string; chest?: string; underChest?: string;
   chestDart?: string; waist?: string; backLength?: string; hips?: string;
   fullLength?: string; sleeve?: string; armhole?: string; arm?: string;
@@ -50,9 +50,9 @@ export interface SaleOrder {
   factoryCode: string;
   brideName: string;
   bridePhone: string;
+  brideAddress: string;
   description: string;
   expectedDeliveryDate: string;
-  actualDeliveryDate?: string;
   sellPrice: number;
   factoryPrice: number;
   deposit: number;
@@ -62,6 +62,9 @@ export interface SaleOrder {
   factoryDepositPaid: number;
   measurements?: Measurements;
   orderDate: string;
+  paymentMethod?: string;
+  otherPaymentMethod?: string;
+  actualDeliveryDate?: string;
 }
 
 export interface Booking {
@@ -88,11 +91,14 @@ export interface Booking {
     detail: string;
     value?: number;
   };
+  extras?: string;
   damageFee?: number;
   actualPickupDate?: string;
   actualReturnDate?: string;
   staffName?: string;
   createdAt: string;
+  paymentMethod?: string;
+  otherPaymentMethod?: string;
 }
 
 export interface Customer {
