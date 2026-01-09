@@ -119,6 +119,7 @@ export interface FinanceRecord {
   notes: string;
   relatedDresses?: string[];
   targetUser?: string;
+  relatedId?: string;
 }
 
 export interface AuditLog {
