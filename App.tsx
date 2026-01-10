@@ -4,7 +4,7 @@ import {
   Settings, LogOut, Plus, Search, Edit, Trash2, Check, X, AlertTriangle, Ruler, 
   Droplets, CheckCircle, Eye, Video, TrendingUp, ArrowDownCircle, PieChart, 
   BarChart3, Clock, ChevronLeft, ChevronRight, Camera, Save, Key, UserPlus, Printer,
-  Phone, RotateCcw, PackagePlus, MinusCircle, Filter, CalendarDays
+  Phone, RotateCcw, PackagePlus, MinusCircle, Filter, CalendarDays, ListChecks
 } from 'lucide-react';
 import { cloudDb, COLLS } from './services/firebase';
 import { 
@@ -41,7 +41,10 @@ const FINANCE_CATEGORIES = [
   "تنظيف",
   "ترزي",
   "فواتير",
-  "أخرى"
+  "أخرى",
+  // Filters for future
+  "مستحقات إيجار (مستقبلية)",
+  "مستحقات تفصيل (مستقبلية)"
 ];
 
 const MEASUREMENT_FIELDS = [
@@ -61,27 +64,8 @@ const MEASUREMENT_FIELDS = [
 
 // --- INVOICE CLONE COMPONENT (A4 HTML Structure) ---
 
-const InvoiceClone = ({ data, mode = 'DEPOSIT' }: { data: any, mode?: 'DEPOSIT' | 'RECEIPT' | 'SIZES' }) => {
+const InvoiceClone = ({ data, mode = 'DEPOSIT' }: { data: any, mode?: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE' }) => {
   if (!data) return null;
-
-  const invDate = (data.createdAt || data.orderDate || today).split('-').reverse().join(' / ');
-  const evDate = (data.eventDate || data.expectedDeliveryDate || '').split('-').reverse().join(' / ');
-  const brideFullName = data.customerName || data.brideName || '';
-  const phone = data.customerPhone || data.bridePhone || '';
-  const address = data.customerAddress || data.brideAddress || '';
-  const dressName = data.dressName || data.factoryCode || '';
-  const notes = data.notes || data.description || '';
-  
-  const depositVal = data.paidDeposit || data.deposit || 0;
-  const remainderVal = data.remainingToPay || data.remainingFromBride || 0;
-  const totalVal = data.rentalPrice || data.sellPrice || 0;
-  
-  const deposit = formatCurrency(depositVal);
-  const remainder = formatCurrency(remainderVal);
-  const total = formatCurrency(totalVal);
-  
-  const payMethod = data.paymentMethod === 'أخرى' ? data.otherPaymentMethod : data.paymentMethod;
-  const isTailoring = !!data.factoryCode;
 
   // Header Component
   const Header = () => (
@@ -129,6 +113,68 @@ const InvoiceClone = ({ data, mode = 'DEPOSIT' }: { data: any, mode?: 'DEPOSIT' 
     overflow: 'hidden',
     position: 'relative'
   };
+
+  // SCHEDULE LIST MODE
+  if (mode === 'SCHEDULE') {
+    const list = Array.isArray(data) ? data : [];
+    return (
+      <div id="printable-invoice-container" className="print-invoice" style={containerStyle} dir="rtl">
+        <Header />
+        <div className="mb-[4mm] text-center border-y border-slate-100 py-[2mm] shrink-0">
+            <h2 className="text-xl font-bold text-[#B59410] uppercase tracking-widest leading-none">BOOKINGS SCHEDULE</h2>
+            <p className="text-xs text-slate-400 font-bold mt-1">جدول الحجوزات</p>
+        </div>
+        
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <table className="w-full border-collapse text-[11px]">
+            <thead>
+              <tr className="bg-slate-50 text-[#B59410] border-y border-slate-200">
+                <th className="p-2 text-right font-black w-[15%]">التاريخ</th>
+                <th className="p-2 text-right font-black w-[25%]">العروس</th>
+                <th className="p-2 text-right font-black w-[20%]">الفستان</th>
+                <th className="p-2 text-right font-black w-[15%]">الهاتف</th>
+                <th className="p-2 text-center font-black w-[25%] border-l border-slate-200">الموظف المسؤول</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((item: any, idx) => (
+                <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50/50">
+                  <td className="p-2 font-bold text-slate-800" dir="ltr">{item.eventDate}</td>
+                  <td className="p-2 font-bold text-slate-800">{item.customerName}</td>
+                  <td className="p-2 font-medium text-slate-600 italic">{item.dressName}</td>
+                  <td className="p-2 font-medium text-slate-500 tracking-wider" dir="ltr">{item.customerPhone}</td>
+                  <td className="p-2 border-l border-slate-200"></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="text-[10px] text-slate-400 mt-2 font-bold text-center">
+           تم الطباعة بتاريخ: {new Date().toLocaleDateString('ar-EG')}
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  const invDate = (data.createdAt || data.orderDate || today).split('-').reverse().join(' / ');
+  const evDate = (data.eventDate || data.expectedDeliveryDate || '').split('-').reverse().join(' / ');
+  const brideFullName = data.customerName || data.brideName || '';
+  const phone = data.customerPhone || data.bridePhone || '';
+  const address = data.customerAddress || data.brideAddress || '';
+  const dressName = data.dressName || data.factoryCode || '';
+  const notes = data.notes || data.description || '';
+  
+  const depositVal = data.paidDeposit || data.deposit || 0;
+  const remainderVal = data.remainingToPay || data.remainingFromBride || 0;
+  const totalVal = data.rentalPrice || data.sellPrice || 0;
+  
+  const deposit = formatCurrency(depositVal);
+  const remainder = formatCurrency(remainderVal);
+  const total = formatCurrency(totalVal);
+  
+  const payMethod = data.paymentMethod === 'أخرى' ? data.otherPaymentMethod : data.paymentMethod;
+  const isTailoring = !!data.factoryCode;
 
   // SIZES INVOICE MODE
   if (mode === 'SIZES') {
@@ -388,7 +434,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<any[]>([]);
   const [printingItem, setPrintingItem] = useState<any>(null);
-  const [printMode, setPrintMode] = useState<'DEPOSIT' | 'RECEIPT' | 'SIZES'>('DEPOSIT');
+  const [printMode, setPrintMode] = useState<'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE'>('DEPOSIT');
 
   // Database States
   const [dresses, setDresses] = useState<Dress[]>([]);
@@ -418,7 +464,7 @@ export default function App() {
     if (user) cloudDb.add(COLLS.LOGS, { action, username: user.name, timestamp: new Date().toISOString(), details });
   };
 
-  const handlePrint = (item: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' = 'DEPOSIT') => {
+  const handlePrint = (item: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE' = 'DEPOSIT') => {
     setPrintMode(mode);
     setPrintingItem(item);
     setTimeout(() => { window.print(); }, 400);
@@ -467,15 +513,15 @@ export default function App() {
 
         <main className="flex-1 overflow-y-auto custom-scrollbar p-5 pb-32">
           {activeTab === 'home' && <HomeView dresses={dresses} bookings={bookings} sales={sales} />}
-          {activeTab === 'rent_dresses' && <RentDressesView dresses={dresses} query={searchQuery} hasPerm={hasPerm} showToast={showToast} addLog={addLog} />}
+          {activeTab === 'rent_dresses' && <RentDressesView dresses={dresses} bookings={bookings} query={searchQuery} hasPerm={hasPerm} showToast={showToast} addLog={addLog} />}
           {activeTab === 'rent_bookings' && <RentBookingsView dresses={dresses} bookings={bookings} finance={finance} query={searchQuery} hasPerm={hasPerm} showToast={showToast} addLog={addLog} onPrint={(i:any, m:any) => handlePrint(i, m || 'DEPOSIT')} />}
           {activeTab === 'sale_orders' && <SaleOrdersView sales={sales} finance={finance} query={searchQuery} hasPerm={hasPerm} showToast={showToast} addLog={addLog} onPrint={(i:any, m:any) => handlePrint(i, m || 'DEPOSIT')} />}
           {activeTab === 'factory' && <FactoryView sales={sales} query={searchQuery} hasPerm={hasPerm} showToast={showToast} addLog={addLog} />}
           {activeTab === 'delivery' && <DeliveryView bookings={bookings} sales={sales} query={searchQuery} user={user} showToast={showToast} addLog={addLog} onPrint={handlePrint} />}
           {activeTab === 'customers' && <CustomersView bookings={bookings} sales={sales} query={searchQuery} />}
-          {activeTab === 'finance' && <FinanceView finance={finance} dresses={dresses} users={users} bookings={bookings} query={searchQuery} hasPerm={hasPerm} showToast={showToast} />}
+          {activeTab === 'finance' && <FinanceView finance={finance} dresses={dresses} users={users} bookings={bookings} sales={sales} query={searchQuery} hasPerm={hasPerm} showToast={showToast} />}
           {activeTab === 'logs' && <LogsView logs={logs} query={searchQuery} />}
-          {activeTab === 'settings' && <SettingsView user={user} users={users} bookings={bookings} sales={sales} finance={finance} hasPerm={hasPerm} showToast={showToast} addLog={addLog} />}
+          {activeTab === 'settings' && <SettingsView user={user} users={users} bookings={bookings} sales={sales} finance={finance} dresses={dresses} hasPerm={hasPerm} showToast={showToast} addLog={addLog} />}
         </main>
 
         <nav className="shrink-0 pb-safe bg-slate-900/80 backdrop-blur-3xl border-t border-white/5 fixed bottom-0 left-0 right-0 z-[200]">
@@ -624,11 +670,12 @@ function HomeView({ dresses, bookings, sales }: any) {
   );
 }
 
-function RentDressesView({ dresses, query, hasPerm, showToast, addLog }: any) {
+function RentDressesView({ dresses, bookings, query, hasPerm, showToast, addLog }: any) {
   const [subTab, setSubTab] = useState<'available' | 'archived' | 'ratings'>('available');
   const [modal, setModal] = useState<any>(null);
   const [filters, setFilters] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingSave, setPendingSave] = useState<any>(null);
 
   const filtered = useMemo(() => {
     return dresses.filter((d: any) => d.type === DressType.RENT && (d.name.toLowerCase().includes(query.toLowerCase()))).filter((d: any) => {
@@ -639,8 +686,37 @@ function RentDressesView({ dresses, query, hasPerm, showToast, addLog }: any) {
       if (filters.length === 0) return true;
       if (filters.includes('CLEANING')) return d.status === DressStatus.CLEANING;
       return true;
-    });
+    }).sort((a: any, b: any) => a.name.localeCompare(b.name, 'ar'));
   }, [dresses, subTab, query, filters]);
+
+  const executeSaveBooking = async (data: any) => {
+     let bId = data.id;
+     bId = await cloudDb.add(COLLS.BOOKINGS, data);
+     
+     // UPDATE RENTAL COUNT
+     const dress = dresses.find((d: any) => d.id === data.dressId);
+     if (dress) {
+        await cloudDb.update(COLLS.DRESSES, dress.id, { rentalCount: (dress.rentalCount || 0) + 1 });
+     }
+     
+     // SECURE FINANCE LOGIC: Check paidDeposit with Number()
+     const depositAmount = Number(data.paidDeposit);
+     if (depositAmount > 0) {
+        await cloudDb.add(COLLS.FINANCE, {
+          amount: depositAmount, 
+          type: 'INCOME', 
+          category: 'حجز إيجار',
+          notes: `عربون حجز فستان ${data.dressName} للعروس ${data.customerName}`,
+          date: data.createdAt, 
+          relatedId: bId
+        });
+        showToast('تم تسجيل عملية مالية بقيمة: ' + depositAmount);
+     }
+     
+     showToast('تم الحجز بنجاح'); 
+     setModal(null); 
+     setPendingSave(null);
+  };
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -673,6 +749,7 @@ function RentDressesView({ dresses, query, hasPerm, showToast, addLog }: any) {
               <div className="h-64 relative overflow-hidden">
                 {d.imageUrl ? <img src={d.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={d.name} /> : <div className="w-full h-full bg-slate-800 flex items-center justify-center text-surface-700"><Shirt size={48} strokeWidth={1} /></div>}
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-60"></div>
+                <div className="absolute top-4 right-4"><Button onClick={() => setModal({ type: 'BOOK_FROM_DRESS', dress: d })} className="!h-10 !text-[10px] !px-4 !bg-white/10 backdrop-blur-md border-white/20 hover:!bg-brand-500 shadow-xl"><Calendar size={14}/> حجز</Button></div>
                 <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
                    <div><h3 className="text-xl font-black text-white tracking-tight">{d.name}</h3><p className="text-[10px] text-surface-300 font-bold uppercase tracking-[0.2em]">{d.style} • {d.condition}</p></div>
                    <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg ${d.status === DressStatus.AVAILABLE ? 'bg-emerald-500 text-white' : 'bg-orange-500 text-white'}`}>{d.status}</span>
@@ -731,6 +808,97 @@ function RentDressesView({ dresses, query, hasPerm, showToast, addLog }: any) {
         </Modal>
       )}
       
+      {modal?.type === 'BOOK_FROM_DRESS' && (
+        <Modal title={`حجز فستان: ${modal.dress.name}`} onClose={() => setModal(null)} size="lg">
+           <form onSubmit={async (e: any) => {
+             e.preventDefault();
+             const fd = new FormData(e.currentTarget);
+             const dr = modal.dress;
+             const rp = Number(fd.get('rp')); const dep = Number(fd.get('dep'));
+             
+             const data: any = {
+               customerName: fd.get('cn'), customerPhone: fd.get('ph'), customerAddress: fd.get('ca'),
+               dressId: dr.id, dressName: dr.name, eventDate: fd.get('ed'), deliveryDate: fd.get('dd'),
+               rentalPrice: rp, paidDeposit: dep, remainingToPay: rp - dep, notes: fd.get('notes'),
+               status: BookingStatus.PENDING, createdAt: today,
+               paymentMethod: fd.get('pm'), otherPaymentMethod: fd.get('opm') || ''
+             };
+
+             const targetDate = new Date(data.eventDate);
+             const conflicts = bookings.filter((b: any) => {
+                 if (b.dressId !== data.dressId) return false;
+                 if (b.status === BookingStatus.CANCELLED || b.status === BookingStatus.COMPLETED) return false;
+                 const bDate = new Date(b.eventDate);
+                 const diff = Math.abs(targetDate.getTime() - bDate.getTime());
+                 return Math.ceil(diff / (1000 * 3600 * 24)) <= 2;
+             });
+
+             if (conflicts.length > 0) {
+                 setPendingSave(data);
+                 setModal({ type: 'CONFLICT_WARNING', conflicts });
+                 return;
+             }
+             await executeSaveBooking(data);
+           }} className="space-y-5">
+             <div className="grid grid-cols-2 gap-4">
+               <Input label="اسم العروس" name="cn" required />
+               <Input label="رقم الهاتف" name="ph" required />
+             </div>
+             <Input label="العنوان" name="ca" />
+             <div className="grid grid-cols-2 gap-4">
+               <Input label="تاريخ المناسبة" name="ed" type="date" required onChange={(e:any) => {
+                    const eventDate = new Date(e.target.value);
+                    if (!isNaN(eventDate.getTime())) {
+                      eventDate.setDate(eventDate.getDate() - 1);
+                      const suggested = eventDate.toISOString().split('T')[0];
+                      const ddInput = document.querySelector('input[name="dd"]') as HTMLInputElement;
+                      if (ddInput) ddInput.value = suggested;
+                    }
+               }} />
+               <Input label="تاريخ التسليم" name="dd" type="date" required />
+             </div>
+             <div className="grid grid-cols-2 gap-4">
+               <Input label="سعر الإيجار" name="rp" type="number" defaultValue={modal.dress.rentalPrice || ''} required />
+               <Input label="العربون" name="dep" type="number" required />
+             </div>
+             <div className="space-y-2">
+               <label className="text-[11px] font-black text-white px-4 leading-none italic uppercase tracking-widest">طريقة الدفع</label>
+               <select name="pm" className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-brand-500" onChange={(e:any)=>setModal({...modal, payMethod: e.target.value})} required>
+                  <option value="">-- اختر --</option>
+                  {PAYMENT_METHODS.map(p=><option key={p} value={p}>{p}</option>)}
+               </select>
+               {(modal.payMethod === 'أخرى') && <Input label="تفاصيل الدفع الأخرى" name="opm" required />}
+             </div>
+             <textarea name="notes" placeholder="ملاحظات..." className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold min-h-[100px]" />
+             <Button className="w-full mt-4 !rounded-2xl">تأكيد الحجز</Button>
+           </form>
+        </Modal>
+      )}
+
+      {modal?.type === 'CONFLICT_WARNING' && (
+        <Modal title="تحذير تعارض حجوزات" onClose={() => setModal(null)}>
+            <div className="space-y-4 text-center">
+                <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 mb-2">
+                    <AlertTriangle size={32} />
+                </div>
+                <h3 className="text-lg font-bold text-white">يوجد حجوزات قريبة لهذا الفستان</h3>
+                <p className="text-sm text-slate-400">الفستان محجوز في تواريخ قريبة جداً. هل أنت متأكد؟</p>
+                <div className="bg-slate-950/50 rounded-xl p-4 text-right space-y-2 border border-white/5">
+                    {modal.conflicts.map((c: any) => (
+                        <div key={c.id} className="p-3 bg-white/5 rounded-lg border border-white/5">
+                            <p className="text-white font-bold text-sm">{c.customerName}</p>
+                            <p className="text-xs text-brand-400 font-bold mt-1">تاريخ المناسبة: {c.eventDate}</p>
+                        </div>
+                    ))}
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-6">
+                    <Button variant="ghost" onClick={() => setModal(null)}>إلغاء</Button>
+                    <Button variant="danger" onClick={() => executeSaveBooking(pendingSave)}>استمرار وحفظ</Button>
+                </div>
+            </div>
+        </Modal>
+      )}
+      
       {modal?.type === 'DELETE_OPT' && (
         <Modal title="خيارات الفستان" onClose={() => setModal(null)}>
           <div className="grid gap-4">
@@ -766,6 +934,7 @@ function RentBookingsView({ dresses, bookings, finance, query, hasPerm, showToas
   const [subTab, setSubTab] = useState<'current' | 'past' | 'fittings'>('current');
   const [modal, setModal] = useState<any>(null);
   const [pendingSave, setPendingSave] = useState<any>(null);
+  const [printFilter, setPrintFilter] = useState({ month: '', selectedIds: [] as string[] });
 
   const filtered = useMemo(() => {
     return bookings.filter((b: any) => (b.customerName.toLowerCase().includes(query.toLowerCase()))).filter((b: any) => {
@@ -797,22 +966,36 @@ function RentBookingsView({ dresses, bookings, finance, query, hasPerm, showToas
 
      if (isAdd) {
        bId = await cloudDb.add(COLLS.BOOKINGS, data);
-       if (data.paidDeposit > 0) {
+       
+       // UPDATE RENTAL COUNT
+       const dress = dresses.find((d: any) => d.id === data.dressId);
+       if (dress) {
+          await cloudDb.update(COLLS.DRESSES, dress.id, { rentalCount: (dress.rentalCount || 0) + 1 });
+       }
+
+       // SECURE FINANCE LOGIC: Check paidDeposit with Number()
+       const deposit = Number(data.paidDeposit);
+       if (deposit > 0) {
           await cloudDb.add(COLLS.FINANCE, {
-            amount: data.paidDeposit, type: 'INCOME', category: 'حجز إيجار',
+            amount: deposit, type: 'INCOME', category: 'حجز إيجار',
             notes: `عربون حجز فستان ${data.dressName} للعروس ${data.customerName}`,
             date: data.createdAt, relatedId: bId
           });
+          showToast('تم تسجيل عملية مالية بقيمة: ' + deposit);
        }
      } else {
-       // Remove ID from data object before update if needed, but Firestore ignores extra fields usually, 
-       // keeping it clean is better. Data already has ID.
        await cloudDb.update(COLLS.BOOKINGS, data.id, data);
      }
      showToast('تم الحفظ بنجاح'); 
      setModal(null);
      setPendingSave(null);
   };
+
+  const filteredForPrint = useMemo(() => {
+    return bookings.filter((b: any) => b.status !== BookingStatus.COMPLETED && b.status !== BookingStatus.CANCELLED)
+      .filter((b: any) => !printFilter.month || b.eventDate.startsWith(printFilter.month))
+      .sort((a: any, b: any) => a.eventDate.localeCompare(b.eventDate));
+  }, [bookings, printFilter.month]);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -824,7 +1007,10 @@ function RentBookingsView({ dresses, bookings, finance, query, hasPerm, showToas
         ))}
       </div>
 
-      {subTab === 'current' && hasPerm('add_booking') && <Button onClick={() => setModal({ type: 'ADD' })} className="w-full !rounded-[2.5rem] h-16 shadow-xl"><Plus size={20}/> تسجيل حجز جديد</Button>}
+      <div className="flex gap-2">
+        {subTab === 'current' && hasPerm('add_booking') && <Button onClick={() => setModal({ type: 'ADD' })} className="flex-1 !rounded-[2.5rem] h-16 shadow-xl"><Plus size={20}/> تسجيل حجز جديد</Button>}
+        {subTab === 'current' && <Button variant="ghost" onClick={() => setModal({ type: 'PRINT_SCHEDULE' })} className="!w-16 !h-16 !rounded-[2.5rem] border-white/10"><Printer size={22}/></Button>}
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {subTab === 'fittings' ? (
@@ -868,6 +1054,51 @@ function RentBookingsView({ dresses, bookings, finance, query, hasPerm, showToas
           </Card>
         ))}
       </div>
+
+      {modal?.type === 'PRINT_SCHEDULE' && (
+        <Modal title="طباعة جدول الحجوزات" onClose={() => setModal(null)} size="lg">
+           <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                 <Input label="فلترة بالشهر" type="month" onChange={(e:any) => setPrintFilter({...printFilter, month: e.target.value})} />
+                 <div className="flex items-end">
+                    <Button variant="ghost" onClick={() => setPrintFilter({...printFilter, selectedIds: filteredForPrint.length === printFilter.selectedIds.length ? [] : filteredForPrint.map((b:any)=>b.id)})} className="w-full">
+                       {filteredForPrint.length === printFilter.selectedIds.length ? 'إلغاء التحديد' : 'تحديد الكل'}
+                    </Button>
+                 </div>
+              </div>
+              <div className="max-h-60 overflow-y-auto custom-scrollbar border border-white/5 rounded-2xl bg-slate-950/50 p-4 space-y-2">
+                 {filteredForPrint.length === 0 ? <p className="text-center text-slate-500 py-4 text-xs font-bold">لا توجد حجوزات في هذا التاريخ</p> : filteredForPrint.map((b:any) => (
+                   <label key={b.id} className="flex items-center gap-3 p-3 bg-slate-900 rounded-xl cursor-pointer border border-transparent hover:border-white/10 transition-all">
+                      <input 
+                        type="checkbox" 
+                        checked={printFilter.selectedIds.includes(b.id)} 
+                        onChange={() => {
+                           const ids = printFilter.selectedIds.includes(b.id) 
+                             ? printFilter.selectedIds.filter(id=>id!==b.id) 
+                             : [...printFilter.selectedIds, b.id];
+                           setPrintFilter({...printFilter, selectedIds: ids});
+                        }} 
+                        className="w-5 h-5 accent-brand-500"
+                      />
+                      <div className="flex-1">
+                         <div className="flex justify-between">
+                            <span className="font-bold text-white text-sm">{b.customerName}</span>
+                            <span className="text-xs text-brand-400 font-bold">{b.eventDate}</span>
+                         </div>
+                         <p className="text-[10px] text-slate-500 font-bold mt-0.5">{b.dressName}</p>
+                      </div>
+                   </label>
+                 ))}
+              </div>
+              <Button onClick={() => {
+                 const data = filteredForPrint.filter((b:any) => printFilter.selectedIds.length === 0 || printFilter.selectedIds.includes(b.id));
+                 if(data.length === 0) return showToast('اختر حجز واحد على الأقل', 'error');
+                 onPrint(data, 'SCHEDULE');
+                 setModal(null);
+              }} className="w-full !rounded-2xl">إكمال الطباعة ({printFilter.selectedIds.length || filteredForPrint.length})</Button>
+           </div>
+        </Modal>
+      )}
 
       {(modal?.type === 'ADD' || modal?.type === 'EDIT') && (
         <Modal title={modal.type === 'ADD' ? 'حجز جديد' : 'تعديل حجز'} onClose={() => setModal(null)} size="lg">
@@ -923,7 +1154,9 @@ function RentBookingsView({ dresses, bookings, finance, query, hasPerm, showToas
                <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">الفستان</label>
                <select name="dr" className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all" defaultValue={modal.dressId} required>
                  <option value="">-- اختر الفستان --</option>
-                 {dresses.filter((d:any) => d.type === DressType.RENT && d.status !== DressStatus.ARCHIVED && d.status !== DressStatus.SOLD).map((d:any) => (
+                 {dresses.filter((d:any) => d.type === DressType.RENT && d.status !== DressStatus.ARCHIVED && d.status !== DressStatus.SOLD)
+                         .sort((a:any,b:any) => a.name.localeCompare(b.name, 'ar'))
+                         .map((d:any) => (
                    <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
                  ))}
                </select>
@@ -1318,65 +1551,101 @@ function DeliveryView({ bookings, sales, query, user, showToast, addLog, onPrint
     return combined.sort((a, b) => (b.opDate || '').localeCompare(a.opDate || ''));
   }, [bookings, sales]);
 
-  const handleDeliverConfirm = async (e: any) => {
+const handleDeliverConfirm = async (e: any) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const item = modal.item;
-    const remainingAfterPayment = Number(fd.get('rem'));
-    const staffName = user.name;
     
-    try {
-      // Calculate amount paid now
-      const currentRemaining = item.type === 'RENT' ? item.remainingToPay : item.remainingFromBride;
-      const paidNow = (currentRemaining || 0) - remainingAfterPayment;
+    // التغيير الجذري: نأخذ "المبلغ المدفوع الآن" بدلاً من "المتبقي"
+    const paidNow = Number(fd.get('paid_now'));
+    const staffName = user?.name || 'Admin';
 
-      if (item.type === 'RENT') {
-        const security = {
-          type: fd.get('sec_type'),
-          detail: fd.get('sec_detail'),
-          value: Number(fd.get('sec_val') || 0)
-        };
-        const updates = { 
-          status: BookingStatus.ACTIVE, 
-          actualPickupDate: today, 
-          remainingToPay: remainingAfterPayment,
-          securityDeposit: security,
-          extras: extras.join(', '),
-          staffName
-        };
-        await cloudDb.update(COLLS.BOOKINGS, item.id, updates);
-        await cloudDb.update(COLLS.DRESSES, item.dressId, { status: DressStatus.RENTED });
-        
-        if (paidNow > 0) {
-          await cloudDb.add(COLLS.FINANCE, {
-            amount: paidNow, type: 'INCOME', category: 'تحصيل متبقي (إيجار)',
-            notes: `تحصيل متبقي إيجار فستان ${item.dressName} من العروس ${item.customerName}`,
-            date: today, relatedId: item.id
-          });
+    // تحديد إجمالي الدين الحالي
+    let currentTotalDebt = 0;
+    if (item.type === 'RENT') {
+        currentTotalDebt = Number(item.remainingToPay || 0);
+    } else {
+        currentTotalDebt = Number(item.remainingFromBride || 0);
+    }
+
+    // حساب المتبقي الجديد تلقائياً
+    const newRemaining = currentTotalDebt - paidNow;
+
+    // حماية منطقية: لا يمكن دفع أكثر من الدين
+    if (newRemaining < 0) {
+        showToast('خطأ: المبلغ المدفوع أكبر من المستحق!', 'error');
+        return;
+    }
+
+    try {
+        if (item.type === 'RENT') {
+            const security = {
+                type: fd.get('sec_type'),
+                detail: fd.get('sec_detail'),
+                value: Number(fd.get('sec_val') || 0)
+            };
+            
+            // تحديث الحجز بالمتبقي الجديد
+            await cloudDb.update(COLLS.BOOKINGS, item.id, {
+                status: BookingStatus.ACTIVE,
+                actualPickupDate: today,
+                remainingToPay: newRemaining, // تم الحساب تلقائياً
+                securityDeposit: security,
+                extras: extras.join(', '),
+                staffName
+            });
+            
+            await cloudDb.update(COLLS.DRESSES, item.dressId, { status: DressStatus.RENTED });
+
+            // تسجيل المالية إجبارياً إذا كان هناك دفع
+            if (paidNow > 0) {
+                await cloudDb.add(COLLS.FINANCE, {
+                    amount: paidNow,
+                    type: 'INCOME',
+                    category: 'تحصيل متبقي (إيجار)',
+                    notes: `تحصيل متبقي إيجار فستان ${item.dressName} من العروس ${item.customerName} (عند التسليم)`,
+                    date: today,
+                    relatedId: item.id
+                });
+                // إظهار رسالة تأكيد المبلغ
+                showToast(`تم استلام مبلغ: ${formatCurrency(paidNow)}`);
+            }
+            
+            addLog('تسليم فستان', `تم تسليم فستان ${item.dressName}. المدفوع: ${paidNow}، المتبقي: ${newRemaining}`);
+
+        } else {
+            // منطق التفصيل (Sale)
+            await cloudDb.update(COLLS.SALES, item.id, {
+                status: SaleStatus.DELIVERED,
+                actualDeliveryDate: today,
+                remainingFromBride: newRemaining, // تم الحساب تلقائياً
+                staffName
+            });
+
+            if (paidNow > 0) {
+                await cloudDb.add(COLLS.FINANCE, {
+                    amount: paidNow,
+                    type: 'INCOME',
+                    category: 'تحصيل متبقي (تفصيل)',
+                    notes: `تحصيل متبقي تفصيل فستان ${item.factoryCode} من العروس ${item.brideName} (عند التسليم)`,
+                    date: today,
+                    relatedId: item.id
+                });
+                showToast(`تم استلام مبلغ: ${formatCurrency(paidNow)}`);
+            }
+            
+            addLog('تسليم بيع', `تم تسليم فستان التفصيل. المدفوع: ${paidNow}`);
         }
-        addLog('تسليم فستان', `تم تسليم فستان ${item.dressName} للعروس ${item.customerName} بواسطة ${staffName}`);
-      } else {
-        await cloudDb.update(COLLS.SALES, item.id, { 
-          status: SaleStatus.DELIVERED, 
-          actualDeliveryDate: today, 
-          remainingFromBride: remainingAfterPayment,
-          staffName
-        });
-        
-        if (paidNow > 0) {
-           await cloudDb.add(COLLS.FINANCE, {
-             amount: paidNow, type: 'INCOME', category: 'تحصيل متبقي (تفصيل)',
-             notes: `تحصيل متبقي تفصيل فستان ${item.factoryCode} من العروس ${item.brideName}`,
-             date: today, relatedId: item.id
-           });
+
+        if (paidNow === 0) {
+            showToast('تم التسليم (لم يتم دفع مبالغ إضافية)');
         }
-        addLog('تسليم بيع', `تم تسليم فستان التفصيل ${item.factoryCode} للعروس ${item.brideName} بواسطة ${staffName}`);
-      }
-      showToast('تم إتمام التسليم بنجاح');
-      setModal(null);
-      setExtras([]);
+        
+        setModal(null);
+        setExtras([]);
     } catch (err) {
-      showToast('خطأ في التحديث', 'error');
+        console.error("Delivery Error:", err);
+        showToast('حدث خطأ أثناء الحفظ', 'error');
     }
   };
 
@@ -1517,7 +1786,22 @@ function DeliveryView({ bookings, sales, query, user, showToast, addLog, onPrint
       {modal?.type === 'DELIVER_FORM' && (
         <Modal title={`إتمام تسليم: ${modal.item.customerName || modal.item.brideName}`} onClose={() => { setModal(null); setExtras([]); }}>
           <form onSubmit={handleDeliverConfirm} className="space-y-6">
-            <Input label="المبلغ المتبقي للتحصيل" name="rem" type="number" defaultValue={modal.item.remainingToPay || modal.item.remainingFromBride} required />
+            {/* بداية الكود الجديد للنافذة */}
+            <div className="bg-slate-950 border border-white/5 p-4 rounded-2xl mb-4 text-center">
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">إجمالي المبلغ المستحق على العروس</p>
+                <p className="text-3xl font-black text-red-400 tracking-tighter">
+                    {formatCurrency(modal.item.remainingToPay || modal.item.remainingFromBride)}
+                </p>
+            </div>
+
+            <Input 
+                label="المبلغ المدفوع الآن (نقداً)" 
+                name="paid_now" 
+                type="number" 
+                defaultValue={modal.item.remainingToPay || modal.item.remainingFromBride} 
+                required 
+            />
+            {/* نهاية الكود الجديد */}
             
             {modal.item.type === 'RENT' && (
               <>
@@ -1636,7 +1920,7 @@ function CustomersView({ bookings, sales, query }: any) {
   );
 }
 
-function FinanceView({ finance, dresses, users, bookings, query, hasPerm, showToast }: any) {
+function FinanceView({ finance, dresses, users, bookings, sales, query, hasPerm, showToast }: any) {
   const [subTab, setSubTab] = useState<'logs' | 'analysis' | 'performance'>('logs');
   const [modal, setModal] = useState<any>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -1646,17 +1930,37 @@ function FinanceView({ finance, dresses, users, bookings, query, hasPerm, showTo
   const [endDate, setEndDate] = useState('');
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
 
+  // Calculate Future Collections
+  const futureRentals = useMemo(() => bookings.filter((b: any) => b.status === BookingStatus.PENDING || b.status === BookingStatus.ACTIVE).map((b: any) => ({
+     id: `fut_rent_${b.id}`, category: "مستحقات إيجار (مستقبلية)", amount: b.remainingToPay, type: 'INCOME', notes: `متبقي إيجار: ${b.customerName}`, date: b.deliveryDate, isFuture: true
+  })).filter((x:any) => x.amount > 0), [bookings]);
+
+  const futureSales = useMemo(() => sales.filter((s: any) => s.status !== SaleStatus.DELIVERED && s.status !== SaleStatus.CANCELLED).map((s: any) => ({
+     id: `fut_sale_${s.id}`, category: "مستحقات تفصيل (مستقبلية)", amount: s.remainingFromBride, type: 'INCOME', notes: `متبقي تفصيل: ${s.brideName}`, date: s.expectedDeliveryDate, isFuture: true
+  })).filter((x:any) => x.amount > 0), [sales]);
+
+  const totalFuture = useMemo(() => {
+     const r = futureRentals.reduce((sum: number, item: any) => sum + item.amount, 0);
+     const s = futureSales.reduce((sum: number, item: any) => sum + item.amount, 0);
+     return r + s;
+  }, [futureRentals, futureSales]);
+
   const filteredFinance = useMemo(() => {
-    return finance.filter(f => {
+    let list = [...finance];
+    // If specific future filters are active, append them to list for display
+    if (selectedCats.includes("مستحقات إيجار (مستقبلية)")) list = [...list, ...futureRentals];
+    if (selectedCats.includes("مستحقات تفصيل (مستقبلية)")) list = [...list, ...futureSales];
+
+    return list.filter(f => {
       const matchesQuery = (f.category || '').includes(query) || (f.notes || '').includes(query);
       const matchesDate = (!startDate || f.date >= startDate) && (!endDate || f.date <= endDate);
       const matchesCategory = selectedCats.length === 0 || selectedCats.includes(f.category);
       return matchesQuery && matchesDate && matchesCategory;
     });
-  }, [finance, query, startDate, endDate, selectedCats]);
+  }, [finance, query, startDate, endDate, selectedCats, futureRentals, futureSales]);
 
   const totals = useMemo(() => {
-    const inc = filteredFinance.filter((f: any) => f.type === 'INCOME').reduce((s: any, f: any) => s + f.amount, 0);
+    const inc = filteredFinance.filter((f: any) => f.type === 'INCOME' && !(f as any).isFuture).reduce((s: any, f: any) => s + f.amount, 0);
     const exp = filteredFinance.filter((f: any) => f.type === 'EXPENSE').reduce((s: any, f: any) => s + f.amount, 0);
     return { inc, exp, profit: inc - exp };
   }, [filteredFinance]);
@@ -1682,7 +1986,7 @@ function FinanceView({ finance, dresses, users, bookings, query, hasPerm, showTo
       }
     }
     await cloudDb.add(COLLS.FINANCE, data);
-    showToast('تم تسجيل العملية بنجاح'); setModal(null);
+    showToast('تم تسجيل عملية مالية بنجاح'); setModal(null);
   };
 
   const toggleCategory = (cat: string) => {
@@ -1734,65 +2038,28 @@ function FinanceView({ finance, dresses, users, bookings, query, hasPerm, showTo
 
       {subTab === 'logs' && (
         <div className="space-y-8">
-           <div className="grid grid-cols-3 gap-4">
-              <div className="bg-emerald-500/5 border border-emerald-500/10 p-6 rounded-3xl text-center"><span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block mb-2 opacity-60">وارد (+)</span><p className="text-xl font-black text-emerald-200 tracking-tighter">{formatCurrency(totals.inc)}</p></div>
-              <div className="bg-red-500/5 border border-red-500/10 p-6 rounded-3xl text-center"><span className="text-[10px] font-black text-red-400 uppercase tracking-widest block mb-2 opacity-60">منصرف (-)</span><p className="text-xl font-black text-red-200 tracking-tighter">{formatCurrency(totals.exp)}</p></div>
-              <div className="bg-brand-500/5 border border-brand-500/10 p-6 rounded-3xl text-center"><span className="text-[10px] font-black text-brand-400 uppercase tracking-widest block mb-2 opacity-60">الربح الصافي</span><p className="text-xl font-black text-brand-200 tracking-tighter">{formatCurrency(totals.profit)}</p></div>
+           <div className="grid grid-cols-4 gap-4">
+              <div className="bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-3xl text-center"><span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block mb-2 opacity-60">وارد (+)</span><p className="text-lg font-black text-emerald-200 tracking-tighter">{formatCurrency(totals.inc)}</p></div>
+              <div className="bg-red-500/5 border border-red-500/10 p-4 rounded-3xl text-center"><span className="text-[9px] font-black text-red-400 uppercase tracking-widest block mb-2 opacity-60">منصرف (-)</span><p className="text-lg font-black text-red-200 tracking-tighter">{formatCurrency(totals.exp)}</p></div>
+              <div className="bg-brand-500/5 border border-brand-500/10 p-4 rounded-3xl text-center"><span className="text-[9px] font-black text-brand-400 uppercase tracking-widest block mb-2 opacity-60">الربح الصافي</span><p className="text-lg font-black text-brand-200 tracking-tighter">{formatCurrency(totals.profit)}</p></div>
+              <div className="bg-blue-500/5 border border-blue-500/10 p-4 rounded-3xl text-center"><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest block mb-2 opacity-60">تحصيلات مستقبلية</span><p className="text-lg font-black text-blue-200 tracking-tighter">{formatCurrency(totalFuture)}</p></div>
            </div>
            
            <div className="space-y-3">
               {filteredFinance.slice().reverse().map((f: any) => (
-                <Card key={f.id} className="!py-4 flex items-center justify-between group">
+                <Card key={f.id} className={`!py-4 flex items-center justify-between group ${(f as any).isFuture ? 'opacity-70 border-dashed' : ''}`}>
                   <div className="flex items-center gap-4">
-                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center border ${f.type === 'INCOME' ? 'bg-emerald-500/10 border-emerald-500/10 text-emerald-500' : 'bg-red-500/10 border-red-500/10 text-red-500'}`}>{f.type === 'INCOME' ? <TrendingUp size={18}/> : <ArrowDownCircle size={18}/>}</div>
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center border ${(f as any).isFuture ? 'bg-blue-500/10 border-blue-500/10 text-blue-500' : f.type === 'INCOME' ? 'bg-emerald-500/10 border-emerald-500/10 text-emerald-500' : 'bg-red-500/10 border-red-500/10 text-red-500'}`}>{(f as any).isFuture ? <Clock size={18}/> : f.type === 'INCOME' ? <TrendingUp size={18}/> : <ArrowDownCircle size={18}/>}</div>
                     <div><h4 className="font-black text-sm text-white">{f.category}</h4><p className="text-[10px] text-slate-500 font-bold mt-0.5">{f.date} • {f.notes}</p></div>
                   </div>
                   <div className="text-left flex flex-col items-end">
-                    <span className={`text-base font-black tracking-tighter ${f.type === 'INCOME' ? 'text-emerald-400' : 'text-red-400'}`}>{f.type === 'INCOME' ? '+' : '-'}{formatCurrency(f.amount)}</span>
-                    {hasPerm('admin_reset') && <button onClick={async () => { if(confirm('حذف السجل المالي؟')) cloudDb.delete(COLLS.FINANCE, f.id); }} className="text-[9px] text-red-500/50 mt-1 hover:text-red-500 transition-colors">حذف</button>}
+                    <span className={`text-base font-black tracking-tighter ${(f as any).isFuture ? 'text-blue-400' : f.type === 'INCOME' ? 'text-emerald-400' : 'text-red-400'}`}>{f.type === 'INCOME' ? '+' : '-'}{formatCurrency(f.amount)}</span>
+                    {!((f as any).isFuture) && hasPerm('admin_reset') && <button onClick={async () => { if(confirm('حذف السجل المالي؟')) cloudDb.delete(COLLS.FINANCE, f.id); }} className="text-[9px] text-red-500/50 mt-1 hover:text-red-500 transition-colors">حذف</button>}
                   </div>
                 </Card>
               ))}
               {filteredFinance.length === 0 && <div className="text-center py-20 opacity-20"><DollarSign size={64} className="mx-auto mb-4"/><p className="font-black uppercase tracking-widest text-sm">No results match filters</p></div>}
            </div>
-        </div>
-      )}
-      {subTab === 'performance' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {performance.map((d: any) => (
-            <Card key={d.id}>
-              <div className="flex justify-between items-start mb-4">
-                <div><h4 className="text-lg font-black text-white">{d.name}</h4><p className="text-[10px] text-brand-500 font-bold mt-1 uppercase tracking-widest italic opacity-60">Profitability Index</p></div>
-                <span className={`px-3 py-1 rounded-xl text-[11px] font-black ${d.profit >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>{formatCurrency(d.profit)}</span>
-              </div>
-              <div className="space-y-2 text-xs italic">
-                <p className="flex justify-between"><span>إجمالي الوارد:</span> <span className="text-emerald-400 font-bold">{formatCurrency(d.income)}</span></p>
-                <p className="flex justify-between"><span>إجمالي المنصرف:</span> <span className="text-red-400 font-bold">{formatCurrency(d.expense)}</span></p>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-      {subTab === 'analysis' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-           <Card className="!bg-emerald-500/5 border-emerald-500/10">
-              <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest mb-6 border-b border-emerald-500/10 pb-3 italic">تحليل الواردات المفلترة</h3>
-              <div className="space-y-4">
-                 {Array.from(new Set(filteredFinance.filter((f: any) => f.type === 'INCOME').map((f: any) => f.category))).map((cat: any) => {
-                   const sum = filteredFinance.filter((f: any) => f.category === cat && f.type === 'INCOME').reduce((s: number, f: any) => s + f.amount, 0);
-                   return <div key={cat} className="flex justify-between items-center"><span className="text-white font-bold">{cat}</span><span className="text-emerald-400 font-black tracking-tighter">{formatCurrency(sum)}</span></div>
-                 })}
-              </div>
-           </Card>
-           <Card className="!bg-red-500/5 border-red-500/10">
-              <h3 className="text-sm font-black text-red-400 uppercase tracking-widest mb-6 border-b border-red-500/10 pb-3 italic">تحليل المنصرفات المفلترة</h3>
-              <div className="space-y-4">
-                 {Array.from(new Set(filteredFinance.filter((f: any) => f.type === 'EXPENSE').map((f: any) => f.category))).map((cat: any) => {
-                   const sum = filteredFinance.filter((f: any) => f.category === cat && f.type === 'EXPENSE').reduce((s: number, f: any) => s + f.amount, 0);
-                   return <div key={cat} className="flex justify-between items-center"><span className="text-white font-bold">{cat}</span><span className="text-red-400 font-black tracking-tighter">{formatCurrency(sum)}</span></div>
-                 })}
-              </div>
-           </Card>
         </div>
       )}
       {modal?.type === 'ADD' && (
@@ -1810,7 +2077,7 @@ function FinanceView({ finance, dresses, users, bookings, query, hasPerm, showTo
                  <label className="text-[11px] font-black text-white px-4 leading-none uppercase tracking-widest italic">التصنيف</label>
                  <select name="c" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-brand-500" onChange={(e: any)=>setModal({...modal, expType: e.target.value})} required>
                     <option value="">-- اختر التصنيف --</option>
-                    {FINANCE_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    {FINANCE_CATEGORIES.filter(c => !c.includes('مستقبلية')).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                  </select>
               </div>
               {modal.expType === 'رواتب' && (
@@ -1866,7 +2133,7 @@ function LogsView({ logs, query }: any) {
   );
 }
 
-function SettingsView({ user, users, bookings, sales, finance, hasPerm, showToast, addLog }: any) {
+function SettingsView({ user, users, bookings, sales, finance, dresses, hasPerm, showToast, addLog }: any) {
   const [modal, setModal] = useState<any>(null);
 
   const handleResetAll = async () => {
@@ -1917,6 +2184,21 @@ function SettingsView({ user, users, bookings, sales, finance, hasPerm, showToas
     addLog('تصحيح مالي', `تم تشغيل التصحيح التلقائي وإضافة ${count} سجل`);
   };
 
+  const handleRecalculateCounts = async () => {
+    if (!confirm('سيتم إعادة حساب عدد مرات الإيجار لكل فستان بناءً على الحجوزات المسجلة. هل أنت متأكد؟')) return;
+    let updatedCount = 0;
+    for (const d of dresses) {
+        // Count active bookings (not cancelled)
+        const realCount = bookings.filter((b: any) => b.dressId === d.id && b.status !== BookingStatus.CANCELLED).length;
+        if (d.rentalCount !== realCount) {
+            await cloudDb.update(COLLS.DRESSES, d.id, { rentalCount: realCount });
+            updatedCount++;
+        }
+    }
+    showToast(`تم تحديث عداد ${updatedCount} فستان`);
+    addLog('صيانة', `إعادة احتساب عدادات الإيجار. تم تحديث ${updatedCount} سجل.`);
+  };
+
   return (
     <div className="space-y-12 animate-fade-in pb-10 italic">
        <div className="text-center py-10 relative">
@@ -1951,6 +2233,9 @@ function SettingsView({ user, users, bookings, sales, finance, hasPerm, showToas
                   <h4 className="text-white font-bold text-lg px-2 mt-4">أدوات الإدارة</h4>
                   <Button onClick={handleFixFinance} className="w-full !rounded-[2rem] h-16 text-base bg-blue-600 hover:bg-blue-500 shadow-xl shadow-blue-900/10 uppercase tracking-widest font-black italic">
                       <RotateCcw size={22} className="ml-2"/> مراجعة وتصحيح السجلات المالية
+                  </Button>
+                  <Button onClick={handleRecalculateCounts} className="w-full !rounded-[2rem] h-16 text-base bg-orange-600 hover:bg-orange-500 shadow-xl shadow-orange-900/10 uppercase tracking-widest font-black italic">
+                      <BarChart3 size={22} className="ml-2"/> تحديث عدادات الإيجار (Recalculate)
                   </Button>
                </div>
             </div>
