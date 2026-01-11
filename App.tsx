@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Home, Shirt, Calendar, ShoppingBag, Factory, Truck, Users, DollarSign, FileText, 
@@ -582,9 +583,9 @@ function Modal({ title, children, onClose, size = 'md' }: any) {
   );
 }
 
-function Card({ children, className = "" }: any) {
+function Card({ children, className = "", ...props }: any) {
   return (
-    <div className={`bg-slate-900/60 backdrop-blur-xl border border-white/5 rounded-3xl p-6 shadow-sm mb-4 transition-all hover:border-white/10 ${className}`}>
+    <div className={`bg-slate-900/60 backdrop-blur-xl border border-white/5 rounded-3xl p-6 shadow-sm mb-4 transition-all hover:border-white/10 ${className}`} {...props}>
       {children}
     </div>
   );
@@ -816,6 +817,19 @@ function RentDressesView({ dresses, bookings, query, hasPerm, showToast, addLog 
              const dr = modal.dress;
              const rp = Number(fd.get('rp')); const dep = Number(fd.get('dep'));
              
+             // VALIDATION CHECK
+             if (dep > rp) {
+                 setPendingSave({
+                     customerName: fd.get('cn'), customerPhone: fd.get('ph'), customerAddress: fd.get('ca'),
+                     dressId: dr.id, dressName: dr.name, eventDate: fd.get('ed'), deliveryDate: fd.get('dd'),
+                     rentalPrice: rp, paidDeposit: dep, remainingToPay: rp - dep, notes: fd.get('notes'),
+                     paymentMethod: fd.get('pm'), otherPaymentMethod: fd.get('opm') || '',
+                     dress: modal.dress // Important to keep dress object
+                 });
+                 setModal({ type: 'VALIDATION_WARNING', msg: 'قيمة العربون أكبر من سعر الإيجار!' });
+                 return;
+             }
+
              const data: any = {
                customerName: fd.get('cn'), customerPhone: fd.get('ph'), customerAddress: fd.get('ca'),
                dressId: dr.id, dressName: dr.name, eventDate: fd.get('ed'), deliveryDate: fd.get('dd'),
@@ -841,12 +855,12 @@ function RentDressesView({ dresses, bookings, query, hasPerm, showToast, addLog 
              await executeSaveBooking(data);
            }} className="space-y-5">
              <div className="grid grid-cols-2 gap-4">
-               <Input label="اسم العروس" name="cn" required />
-               <Input label="رقم الهاتف" name="ph" required />
+               <Input label="اسم العروس" name="cn" defaultValue={modal.customerName} required />
+               <Input label="رقم الهاتف" name="ph" defaultValue={modal.customerPhone} required />
              </div>
-             <Input label="العنوان" name="ca" />
+             <Input label="العنوان" name="ca" defaultValue={modal.customerAddress} />
              <div className="grid grid-cols-2 gap-4">
-               <Input label="تاريخ المناسبة" name="ed" type="date" required onChange={(e:any) => {
+               <Input label="تاريخ المناسبة" name="ed" type="date" defaultValue={modal.eventDate} required onChange={(e:any) => {
                     const eventDate = new Date(e.target.value);
                     if (!isNaN(eventDate.getTime())) {
                       eventDate.setDate(eventDate.getDate() - 1);
@@ -855,23 +869,38 @@ function RentDressesView({ dresses, bookings, query, hasPerm, showToast, addLog 
                       if (ddInput) ddInput.value = suggested;
                     }
                }} />
-               <Input label="تاريخ التسليم" name="dd" type="date" required />
+               <Input label="تاريخ التسليم" name="dd" type="date" defaultValue={modal.deliveryDate} required />
              </div>
              <div className="grid grid-cols-2 gap-4">
-               <Input label="سعر الإيجار" name="rp" type="number" defaultValue={modal.dress.rentalPrice || ''} required />
-               <Input label="العربون" name="dep" type="number" required />
+               <Input label="سعر الإيجار" name="rp" type="number" defaultValue={modal.rentalPrice || modal.dress.rentalPrice} required />
+               <Input label="العربون" name="dep" type="number" defaultValue={modal.paidDeposit} required />
              </div>
              <div className="space-y-2">
                <label className="text-[11px] font-black text-white px-4 leading-none italic uppercase tracking-widest">طريقة الدفع</label>
-               <select name="pm" className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-brand-500" onChange={(e:any)=>setModal({...modal, payMethod: e.target.value})} required>
+               <select name="pm" className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-brand-500" defaultValue={modal.paymentMethod} onChange={(e:any)=>setModal({...modal, payMethod: e.target.value})} required>
                   <option value="">-- اختر --</option>
                   {PAYMENT_METHODS.map(p=><option key={p} value={p}>{p}</option>)}
                </select>
-               {(modal.payMethod === 'أخرى') && <Input label="تفاصيل الدفع الأخرى" name="opm" required />}
+               {(modal.payMethod === 'أخرى' || modal.paymentMethod === 'أخرى') && <Input label="تفاصيل الدفع الأخرى" name="opm" defaultValue={modal.otherPaymentMethod} required />}
              </div>
-             <textarea name="notes" placeholder="ملاحظات..." className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold min-h-[100px]" />
+             <textarea name="notes" placeholder="ملاحظات..." defaultValue={modal.notes} className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold min-h-[100px]" />
              <Button className="w-full mt-4 !rounded-2xl">تأكيد الحجز</Button>
            </form>
+        </Modal>
+      )}
+
+      {modal?.type === 'VALIDATION_WARNING' && (
+        <Modal title="تنبيه هام" onClose={() => setModal(null)}>
+            <div className="text-center space-y-6">
+               <div className="w-20 h-20 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 border border-orange-500/20">
+                   <AlertTriangle size={40} />
+               </div>
+               <div>
+                   <h3 className="font-black text-white text-xl">{modal.msg}</h3>
+                   <p className="text-sm text-slate-400 mt-2">يرجى مراجعة البيانات المدخلة.</p>
+               </div>
+               <Button onClick={() => setModal({ ...pendingSave, type: 'BOOK_FROM_DRESS' })} className="w-full">تعديل البيانات</Button>
+            </div>
         </Modal>
       )}
 
@@ -1109,6 +1138,20 @@ function RentBookingsView({ dresses, bookings, finance, query, hasPerm, showToas
              const dr = dresses.find((x:any) => x.id === drId);
              const rp = Number(fd.get('rp')); const dep = Number(fd.get('dep'));
              
+             // VALIDATION CHECK
+             if (dep > rp) {
+                 setPendingSave({
+                     customerName: fd.get('cn'), customerPhone: fd.get('ph'), customerAddress: fd.get('ca'),
+                     dressId: drId, dressName: dr?.name || '', eventDate: fd.get('ed'), deliveryDate: fd.get('dd'),
+                     rentalPrice: rp, paidDeposit: dep, remainingToPay: rp - dep, notes: fd.get('notes'),
+                     paymentMethod: fd.get('pm'), otherPaymentMethod: fd.get('opm') || '',
+                     id: modal.id, // For Edit case
+                     isEdit: modal.type === 'EDIT'
+                 });
+                 setModal({ type: 'VALIDATION_WARNING', msg: 'قيمة العربون أكبر من سعر الإيجار!' });
+                 return;
+             }
+
              const data: any = {
                customerName: fd.get('cn'), customerPhone: fd.get('ph'), customerAddress: fd.get('ca'),
                dressId: drId, dressName: dr?.name || '', eventDate: fd.get('ed'), deliveryDate: fd.get('dd'),
@@ -1193,6 +1236,21 @@ function RentBookingsView({ dresses, bookings, finance, query, hasPerm, showToas
         </Modal>
       )}
 
+      {modal?.type === 'VALIDATION_WARNING' && (
+        <Modal title="تنبيه هام" onClose={() => setModal(null)}>
+            <div className="text-center space-y-6">
+               <div className="w-20 h-20 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 border border-orange-500/20">
+                   <AlertTriangle size={40} />
+               </div>
+               <div>
+                   <h3 className="font-black text-white text-xl">{modal.msg}</h3>
+                   <p className="text-sm text-slate-400 mt-2">يرجى مراجعة البيانات المدخلة.</p>
+               </div>
+               <Button onClick={() => setModal({ ...pendingSave, type: pendingSave.isEdit ? 'EDIT' : 'ADD' })} className="w-full">تعديل البيانات</Button>
+            </div>
+        </Modal>
+      )}
+
       {modal?.type === 'CONFLICT_WARNING' && (
         <Modal title="تحذير تعارض حجوزات" onClose={() => setModal(null)}>
             <div className="space-y-4 text-center">
@@ -1257,6 +1315,7 @@ function RentBookingsView({ dresses, bookings, finance, query, hasPerm, showToas
 function SaleOrdersView({ sales, finance, query, hasPerm, showToast, addLog, onPrint }: any) {
   const [subTab, setSubTab] = useState<'current' | 'past'>('current');
   const [modal, setModal] = useState<any>(null);
+  const [pendingSave, setPendingSave] = useState<any>(null);
 
   const filtered = useMemo(() => {
     return sales.filter((s: any) => (s.brideName.toLowerCase().includes(query.toLowerCase()) || s.factoryCode.toLowerCase().includes(query.toLowerCase()))).filter((s: any) => {
@@ -1278,6 +1337,25 @@ function SaleOrdersView({ sales, finance, query, hasPerm, showToast, addLog, onP
     } catch (err) {
       showToast('خطأ في الحذف', 'error');
     }
+  };
+
+  const handleSave = async (data: any, isAdd: boolean, sId: string) => {
+      if (isAdd) {
+        sId = await cloudDb.add(COLLS.SALES, data);
+        // Add Finance record for initial deposit
+        if (data.deposit > 0) {
+           await cloudDb.add(COLLS.FINANCE, {
+             amount: data.deposit, type: 'INCOME', category: 'عربون تفصيل',
+             notes: `عربون تفصيل فستان كود ${data.factoryCode} للعروس ${data.brideName}`,
+             date: today, relatedId: sId
+           });
+        }
+      } else {
+        await cloudDb.update(COLLS.SALES, sId, data);
+      }
+      showToast('تم الحفظ بنجاح'); 
+      setModal(null);
+      setPendingSave(null);
   };
 
   return (
@@ -1323,30 +1401,29 @@ function SaleOrdersView({ sales, finance, query, hasPerm, showToast, addLog, onP
             const fd = new FormData(e.currentTarget);
             const code = fd.get('c') as string;
             const sp = Number(fd.get('sp')); const dep = Number(fd.get('dep'));
+            const fp = Number(fd.get('fp'));
+
             const data = {
               factoryCode: code, brideName: fd.get('n'), bridePhone: fd.get('ph'), brideAddress: fd.get('addr'),
-              expectedDeliveryDate: fd.get('ed'), sellPrice: sp, factoryPrice: Number(fd.get('fp')),
+              expectedDeliveryDate: fd.get('ed'), sellPrice: sp, factoryPrice: fp,
               deposit: dep, remainingFromBride: sp - dep, description: fd.get('d'),
               status: modal.status || SaleStatus.DESIGNING, factoryStatus: modal.factoryStatus || FactoryPaymentStatus.UNPAID,
               factoryDepositPaid: modal.factoryDepositPaid || 0, orderDate: today,
               paymentMethod: fd.get('pm'), otherPaymentMethod: fd.get('opm') || ''
             };
             
-            let sId = modal.id;
-            if (modal.type === 'ADD') {
-              sId = await cloudDb.add(COLLS.SALES, data);
-              // Add Finance record for initial deposit
-              if (dep > 0) {
-                 await cloudDb.add(COLLS.FINANCE, {
-                   amount: dep, type: 'INCOME', category: 'عربون تفصيل',
-                   notes: `عربون تفصيل فستان كود ${code} للعروس ${data.brideName}`,
-                   date: today, relatedId: sId
-                 });
-              }
-            } else {
-              await cloudDb.update(COLLS.SALES, modal.id, data);
+            // VALIDATION: Loss Check
+            if (fp > sp) {
+                setPendingSave({ 
+                    ...data, 
+                    isAdd: modal.type === 'ADD', 
+                    sId: modal.id 
+                });
+                setModal({ type: 'LOSS_WARNING' });
+                return;
             }
-            showToast('تم الحفظ بنجاح'); setModal(null);
+
+            await handleSave(data, modal.type === 'ADD', modal.id);
           }} className="space-y-5">
             <Input label="كود المصنع" name="c" defaultValue={modal.factoryCode} required />
             <div className="grid grid-cols-2 gap-4">
@@ -1371,6 +1448,24 @@ function SaleOrdersView({ sales, finance, query, hasPerm, showToast, addLog, onP
             <textarea name="d" placeholder="تفاصيل التصميم..." defaultValue={modal.description} className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-6 text-white font-bold h-24 outline-none focus:ring-2 focus:ring-brand-500 transition-all" />
             <Button className="w-full !rounded-2xl shadow-xl">تسجيل الطلب</Button>
           </form>
+        </Modal>
+      )}
+
+      {modal?.type === 'LOSS_WARNING' && (
+        <Modal title="تحذير خسارة" onClose={() => setModal(null)}>
+            <div className="text-center space-y-6">
+               <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto text-red-500 border border-red-500/20">
+                   <AlertTriangle size={40} />
+               </div>
+               <div>
+                   <h3 className="font-black text-white text-xl">سعر المصنع أكبر من سعر البيع!</h3>
+                   <p className="text-sm text-slate-400 mt-2">هل أنت متأكد من تسجيل هذه العملية بخسارة؟</p>
+               </div>
+               <div className="grid grid-cols-2 gap-4">
+                   <Button variant="ghost" onClick={() => setModal({ ...pendingSave, type: pendingSave.isAdd ? 'ADD' : 'EDIT', id: pendingSave.sId })}>تعديل</Button>
+                   <Button variant="danger" onClick={() => handleSave(pendingSave, pendingSave.isAdd, pendingSave.sId)}>متابعة</Button>
+               </div>
+            </div>
         </Modal>
       )}
 
@@ -1888,35 +1983,127 @@ const handleDeliverConfirm = async (e: any) => {
 }
 
 function CustomersView({ bookings, sales, query }: any) {
+  const [viewCustomer, setViewCustomer] = useState<any>(null);
+
   const customers = useMemo(() => {
     const map = new Map();
-    [...bookings, ...sales].forEach((item: any) => {
-      const name = item.customerName || item.brideName;
-      const phone = item.customerPhone || item.bridePhone;
-      if (!phone) return;
-      if (!map.has(phone)) map.set(phone, { id: phone, name, phone, count: 1, lastDate: item.createdAt || item.orderDate });
-      else {
-        const existing = map.get(phone);
-        existing.count++;
-        if ((item.createdAt || item.orderDate) > existing.lastDate) existing.lastDate = item.createdAt || item.orderDate;
-      }
-    });
-    return Array.from(map.values()).filter((c:any) => (c.name || '').toLowerCase().includes((query || '').toLowerCase()) || (c.phone || '').includes(query));
+    
+    const mergeData = (item: any, type: 'RENT' | 'SALE') => {
+       const rawName = type === 'RENT' ? item.customerName : item.brideName;
+       if (!rawName) return;
+       const name = rawName.trim();
+       const phone = (type === 'RENT' ? item.customerPhone : item.bridePhone) || '';
+       const date = (type === 'RENT' ? (item.createdAt || item.eventDate) : (item.orderDate || item.expectedDeliveryDate)) || today;
+       
+       if (!map.has(name)) {
+         map.set(name, { 
+           id: name, name, phone, count: 0, lastDate: date, 
+           history: [], totalSpent: 0, totalDebt: 0 
+         });
+       }
+       
+       const entry = map.get(name);
+       if (!entry.phone && phone) entry.phone = phone; // Fill phone if missing
+       if (date > entry.lastDate) entry.lastDate = date;
+       entry.count++;
+       
+       const price = type === 'RENT' ? (item.rentalPrice || 0) : (item.sellPrice || 0);
+       const debt = type === 'RENT' ? (item.remainingToPay || 0) : (item.remainingFromBride || 0);
+       entry.totalSpent += price;
+       entry.totalDebt += debt;
+
+       entry.history.push({
+         id: item.id,
+         type,
+         date: type === 'RENT' ? item.eventDate : item.expectedDeliveryDate,
+         status: item.status,
+         item: type === 'RENT' ? item.dressName : item.factoryCode,
+         price,
+         debt
+       });
+    };
+
+    bookings.forEach((b: any) => mergeData(b, 'RENT'));
+    sales.forEach((s: any) => mergeData(s, 'SALE'));
+
+    return Array.from(map.values())
+      .filter((c: any) => c.name.toLowerCase().includes(query.toLowerCase()) || c.phone.includes(query))
+      .sort((a: any, b: any) => b.lastDate.localeCompare(a.lastDate));
   }, [bookings, sales, query]);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
-      {customers.map((c: any) => (
-        <Card key={c.id}>
-           <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-brand-500/10 flex items-center justify-center text-brand-500 font-bold italic">{c.name.charAt(0)}</div>
-              <div><h4 className="font-black text-white text-base">{c.name}</h4><p className="text-[10px] text-surface-500 font-bold">{c.phone}</p></div>
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
+        {customers.map((c: any) => (
+          <Card key={c.id} onClick={() => setViewCustomer(c)} className="cursor-pointer hover:border-brand-500/50 group relative overflow-hidden">
+             <div className="absolute top-0 right-0 w-1.5 h-full bg-slate-800 group-hover:bg-brand-500 transition-colors"></div>
+             <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center text-slate-500 font-black text-xl group-hover:bg-brand-500 group-hover:text-white transition-all border border-white/5">
+                  {c.name.charAt(0)}
+                </div>
+                <div>
+                  <h4 className="font-black text-white text-base">{c.name}</h4>
+                  <p className="text-[10px] text-slate-500 font-bold tracking-wider" dir="ltr">{c.phone || 'No Phone'}</p>
+                </div>
+             </div>
+             <div className="flex justify-between items-end border-t border-white/5 pt-3">
+                <div>
+                   <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest block mb-1">المعاملات</span>
+                   <span className="text-lg font-black text-white">{c.count}</span>
+                </div>
+                <div className="text-left">
+                   <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest block mb-1">آخر نشاط</span>
+                   <span className="text-xs font-bold text-brand-400">{c.lastDate}</span>
+                </div>
+             </div>
+          </Card>
+        ))}
+        {customers.length === 0 && <div className="col-span-full py-20 text-center opacity-20"><Users size={64} className="mx-auto mb-4"/><p className="font-black uppercase tracking-widest text-sm">No Customers Found</p></div>}
+      </div>
+
+      {viewCustomer && (
+        <Modal title={viewCustomer.name} onClose={() => setViewCustomer(null)} size="lg">
+           <div className="space-y-6">
+              <div className="grid grid-cols-3 gap-4">
+                 <div className="p-4 bg-slate-950 rounded-2xl border border-white/5 text-center">
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-1">إجمالي التعاملات</span>
+                    <span className="text-xl font-black text-white">{formatCurrency(viewCustomer.totalSpent)}</span>
+                 </div>
+                 <div className="p-4 bg-slate-950 rounded-2xl border border-white/5 text-center">
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-1">إجمالي المديونية</span>
+                    <span className={`text-xl font-black ${viewCustomer.totalDebt > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{formatCurrency(viewCustomer.totalDebt)}</span>
+                 </div>
+                 <div className="p-4 bg-slate-950 rounded-2xl border border-white/5 text-center">
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-1">عدد الطلبات</span>
+                    <span className="text-xl font-black text-brand-400">{viewCustomer.count}</span>
+                 </div>
+              </div>
+
+              <div className="space-y-3 max-h-[50vh] overflow-y-auto custom-scrollbar">
+                 {viewCustomer.history.sort((a:any,b:any) => b.date.localeCompare(a.date)).map((h: any) => (
+                   <div key={h.id} className="p-4 rounded-2xl border border-white/5 bg-slate-900/50 flex justify-between items-center group hover:bg-slate-900 transition-colors">
+                      <div>
+                         <div className="flex items-center gap-2 mb-1">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${h.type === 'RENT' ? 'bg-purple-500/10 text-purple-400' : 'bg-orange-500/10 text-orange-400'}`}>{h.type === 'RENT' ? 'إيجار' : 'تفصيل'}</span>
+                            <span className="text-xs font-bold text-white">{h.item}</span>
+                         </div>
+                         <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
+                            <span>{h.date}</span>
+                            <span>•</span>
+                            <span className={h.status === 'ملغي' || h.status === 'CANCELLED' ? 'text-red-400' : 'text-slate-400'}>{h.status}</span>
+                         </div>
+                      </div>
+                      <div className="text-left">
+                         <span className="block text-sm font-black text-white">{formatCurrency(h.price)}</span>
+                         {h.debt > 0 ? <span className="text-[10px] font-bold text-red-400">متبقي: {formatCurrency(h.debt)}</span> : <span className="text-[10px] font-bold text-emerald-500 flex items-center gap-1 justify-end"><CheckCircle size={10}/> خالص</span>}
+                      </div>
+                   </div>
+                 ))}
+              </div>
            </div>
-           <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-500"><span>{c.count} معاملات</span><span>{c.lastDate}</span></div>
-        </Card>
-      ))}
-      {customers.length === 0 && <div className="text-center py-40 opacity-10"><Users size={80} strokeWidth={1} className="mx-auto" /></div>}
-    </div>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -1930,48 +2117,102 @@ function FinanceView({ finance, dresses, users, bookings, sales, query, hasPerm,
   const [endDate, setEndDate] = useState('');
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
 
-  // Calculate Future Collections
-  const futureRentals = useMemo(() => bookings.filter((b: any) => b.status === BookingStatus.PENDING || b.status === BookingStatus.ACTIVE).map((b: any) => ({
+  // --- LOGIC: Future Collections & Factory Liability ---
+  
+  // 1. Rent Remaining (Active Bookings)
+  const activeBookings = useMemo(() => bookings.filter((b: any) => 
+    b.status === BookingStatus.PENDING || b.status === BookingStatus.ACTIVE
+  ), [bookings]);
+  
+  const totalRentRemaining = useMemo(() => activeBookings.reduce((sum: number, b: any) => sum + (b.remainingToPay || 0), 0), [activeBookings]);
+
+  // 2. Sale Remaining (Active Sales)
+  const activeSales = useMemo(() => sales.filter((s: any) => 
+    s.status !== SaleStatus.DELIVERED && s.status !== SaleStatus.CANCELLED
+  ), [sales]);
+
+  const totalSaleRemaining = useMemo(() => activeSales.reduce((sum: number, s: any) => sum + (s.remainingFromBride || 0), 0), [activeSales]);
+
+  // 3. Factory Liability (Active Sales)
+  const totalFactoryLiability = useMemo(() => activeSales.reduce((sum: number, s: any) => {
+      const debt = (s.factoryPrice || 0) - (s.factoryDepositPaid || 0);
+      return sum + Math.max(0, debt);
+  }, 0), [activeSales]);
+
+  // 4. Net Future Collections
+  const netFutureCollections = (totalRentRemaining + totalSaleRemaining) - totalFactoryLiability;
+
+  // --- LOGIC: Filtered Finance List (Preserving Future Items Injection) ---
+  const futureRentals = useMemo(() => activeBookings.filter((b: any) => b.remainingToPay > 0).map((b: any) => ({
      id: `fut_rent_${b.id}`, category: "مستحقات إيجار (مستقبلية)", amount: b.remainingToPay, type: 'INCOME', notes: `متبقي إيجار: ${b.customerName}`, date: b.deliveryDate, isFuture: true
-  })).filter((x:any) => x.amount > 0), [bookings]);
+  })), [activeBookings]);
 
-  const futureSales = useMemo(() => sales.filter((s: any) => s.status !== SaleStatus.DELIVERED && s.status !== SaleStatus.CANCELLED).map((s: any) => ({
+  const futureSales = useMemo(() => activeSales.filter((s: any) => s.remainingFromBride > 0).map((s: any) => ({
      id: `fut_sale_${s.id}`, category: "مستحقات تفصيل (مستقبلية)", amount: s.remainingFromBride, type: 'INCOME', notes: `متبقي تفصيل: ${s.brideName}`, date: s.expectedDeliveryDate, isFuture: true
-  })).filter((x:any) => x.amount > 0), [sales]);
-
-  const totalFuture = useMemo(() => {
-     const r = futureRentals.reduce((sum: number, item: any) => sum + item.amount, 0);
-     const s = futureSales.reduce((sum: number, item: any) => sum + item.amount, 0);
-     return r + s;
-  }, [futureRentals, futureSales]);
+  })), [activeSales]);
 
   const filteredFinance = useMemo(() => {
     let list = [...finance];
-    // If specific future filters are active, append them to list for display
-    if (selectedCats.includes("مستحقات إيجار (مستقبلية)")) list = [...list, ...futureRentals];
-    if (selectedCats.includes("مستحقات تفصيل (مستقبلية)")) list = [...list, ...futureSales];
+    // Add future items if relevant category is selected or no filter active
+    if (selectedCats.includes("مستحقات إيجار (مستقبلية)") || selectedCats.length === 0) list = [...list, ...futureRentals];
+    if (selectedCats.includes("مستحقات تفصيل (مستقبلية)") || selectedCats.length === 0) list = [...list, ...futureSales];
 
     return list.filter(f => {
       const matchesQuery = (f.category || '').includes(query) || (f.notes || '').includes(query);
       const matchesDate = (!startDate || f.date >= startDate) && (!endDate || f.date <= endDate);
       const matchesCategory = selectedCats.length === 0 || selectedCats.includes(f.category);
       return matchesQuery && matchesDate && matchesCategory;
-    });
+    }).sort((a: any, b: any) => b.date.localeCompare(a.date));
   }, [finance, query, startDate, endDate, selectedCats, futureRentals, futureSales]);
 
+  // --- LOGIC: Actual Cash Totals ---
   const totals = useMemo(() => {
-    const inc = filteredFinance.filter((f: any) => f.type === 'INCOME' && !(f as any).isFuture).reduce((s: any, f: any) => s + f.amount, 0);
-    const exp = filteredFinance.filter((f: any) => f.type === 'EXPENSE').reduce((s: any, f: any) => s + f.amount, 0);
+    // Filter out future items for actual cash calculations
+    const actuals = filteredFinance.filter((f: any) => !f.isFuture);
+    const inc = actuals.filter((f: any) => f.type === 'INCOME').reduce((s: any, f: any) => s + f.amount, 0);
+    const exp = actuals.filter((f: any) => f.type === 'EXPENSE').reduce((s: any, f: any) => s + f.amount, 0);
     return { inc, exp, profit: inc - exp };
   }, [filteredFinance]);
 
+  // --- LOGIC: Performance Tab ---
   const performance = useMemo(() => {
     return dresses.filter((d: any) => d.type === DressType.RENT).map((d: any) => {
-      const income = bookings.filter((b: any) => b.dressId === d.id && b.status !== BookingStatus.CANCELLED).reduce((s: any, b: any) => s + b.rentalPrice, 0) + (d.status === DressStatus.SOLD ? (d.salePrice || 0) : 0);
-      const expense = d.factoryPrice + finance.filter((f: any) => f.relatedDresses?.includes(d.name) && f.type === 'EXPENSE').reduce((s: any, f: any) => s + f.amount, 0);
-      return { ...d, income, expense, profit: income - expense };
-    }).sort((a: any, b: any) => b.profit - a.profit);
+      const bookingsForDress = bookings.filter((b: any) => b.dressId === d.id && b.status !== BookingStatus.CANCELLED);
+      const rentalIncome = bookingsForDress.reduce((s: any, b: any) => s + b.rentalPrice, 0);
+      const salesIncome = d.status === DressStatus.SOLD ? (d.salePrice || 0) : 0;
+      
+      // Calculate expense for this dress from finance records (cleaning, repairs)
+      const relatedExpenses = finance.filter((f: any) => f.type === 'EXPENSE' && f.relatedDresses?.includes(d.name))
+                                     .reduce((s: any, f: any) => s + f.amount, 0);
+      
+      const totalExpense = d.factoryPrice + relatedExpenses;
+      const totalIncome = rentalIncome + salesIncome;
+
+      return { 
+          ...d, 
+          income: totalIncome, 
+          expense: totalExpense, 
+          profit: totalIncome - totalExpense, 
+          usageCount: bookingsForDress.length 
+      };
+    }).sort((a: any, b: any) => b.profit - a.profit); // Sort by highest profit
   }, [dresses, bookings, finance]);
+
+  // --- LOGIC: Analysis Tab ---
+  const analysis = useMemo(() => {
+      const expMap: Record<string, number> = {};
+      const incMap: Record<string, number> = {};
+
+      finance.forEach((f: any) => {
+          if (f.type === 'EXPENSE') expMap[f.category] = (expMap[f.category] || 0) + f.amount;
+          else incMap[f.category] = (incMap[f.category] || 0) + f.amount;
+      });
+
+      return {
+          expenses: Object.entries(expMap).map(([k, v]) => ({ name: k, value: v })).sort((a,b)=>b.value-a.value),
+          income: Object.entries(incMap).map(([k, v]) => ({ name: k, value: v })).sort((a,b)=>b.value-a.value)
+      };
+  }, [finance]);
 
   const handleAdd = async (e: any) => {
     e.preventDefault();
@@ -1995,6 +2236,7 @@ function FinanceView({ finance, dresses, users, bookings, sales, query, hasPerm,
 
   return (
     <div className="space-y-8 animate-fade-in">
+       {/* Tabs */}
        <div className="flex bg-slate-900/60 p-1.5 rounded-2xl border border-white/5 sticky top-0 z-50 backdrop-blur-xl shadow-lg">
         {['logs', 'analysis', 'performance'].map(t => (
           <button key={t} onClick={() => setSubTab(t as any)} className={`flex-1 h-11 rounded-xl text-[11px] font-black transition-all uppercase tracking-widest ${subTab === t ? 'bg-brand-600 text-white shadow-lg' : 'text-surface-500 hover:text-white'}`}>
@@ -2003,6 +2245,7 @@ function FinanceView({ finance, dresses, users, bookings, sales, query, hasPerm,
         ))}
       </div>
 
+      {/* Controls */}
       <div className="flex gap-4">
         <Button variant="ghost" className="flex-1 h-12" onClick={() => setShowFilters(!showFilters)}>
            <Filter size={18} /> {showFilters ? 'إخفاء الفلاتر' : 'تصفية النتائج'}
@@ -2010,6 +2253,7 @@ function FinanceView({ finance, dresses, users, bookings, sales, query, hasPerm,
         {hasPerm('add_finance') && <Button onClick={() => setModal({ type: 'ADD' })} className="flex-1 h-12"><Plus size={18}/> إضافة عملية</Button>}
       </div>
 
+      {/* Filters */}
       {showFilters && (
         <Card className="animate-slide-up bg-slate-900/40 border-brand-500/20">
            <div className="space-y-6">
@@ -2036,25 +2280,55 @@ function FinanceView({ finance, dresses, users, bookings, sales, query, hasPerm,
         </Card>
       )}
 
+      {/* --- TAB: LOGS --- */}
       {subTab === 'logs' && (
         <div className="space-y-8">
-           <div className="grid grid-cols-4 gap-4">
-              <div className="bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-3xl text-center"><span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block mb-2 opacity-60">وارد (+)</span><p className="text-lg font-black text-emerald-200 tracking-tighter">{formatCurrency(totals.inc)}</p></div>
-              <div className="bg-red-500/5 border border-red-500/10 p-4 rounded-3xl text-center"><span className="text-[9px] font-black text-red-400 uppercase tracking-widest block mb-2 opacity-60">منصرف (-)</span><p className="text-lg font-black text-red-200 tracking-tighter">{formatCurrency(totals.exp)}</p></div>
-              <div className="bg-brand-500/5 border border-brand-500/10 p-4 rounded-3xl text-center"><span className="text-[9px] font-black text-brand-400 uppercase tracking-widest block mb-2 opacity-60">الربح الصافي</span><p className="text-lg font-black text-brand-200 tracking-tighter">{formatCurrency(totals.profit)}</p></div>
-              <div className="bg-blue-500/5 border border-blue-500/10 p-4 rounded-3xl text-center"><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest block mb-2 opacity-60">تحصيلات مستقبلية</span><p className="text-lg font-black text-blue-200 tracking-tighter">{formatCurrency(totalFuture)}</p></div>
+           {/* Dashboard Cards */}
+           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-3xl text-center shadow-sm">
+                  <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block mb-2 opacity-60">وارد (+)</span>
+                  <p className="text-lg font-black text-emerald-200 tracking-tighter">{formatCurrency(totals.inc)}</p>
+              </div>
+              <div className="bg-red-500/5 border border-red-500/10 p-4 rounded-3xl text-center shadow-sm">
+                  <span className="text-[9px] font-black text-red-400 uppercase tracking-widest block mb-2 opacity-60">منصرف (-)</span>
+                  <p className="text-lg font-black text-red-200 tracking-tighter">{formatCurrency(totals.exp)}</p>
+              </div>
+              <div className="bg-brand-500/5 border border-brand-500/10 p-4 rounded-3xl text-center shadow-sm">
+                  <span className="text-[9px] font-black text-brand-400 uppercase tracking-widest block mb-2 opacity-60">الربح الصافي</span>
+                  <p className="text-lg font-black text-brand-200 tracking-tighter">{formatCurrency(totals.profit)}</p>
+              </div>
+              {/* NEW: Factory Liability Card */}
+              <div className="bg-orange-500/5 border border-orange-500/10 p-4 rounded-3xl text-center shadow-sm">
+                  <span className="text-[9px] font-black text-orange-400 uppercase tracking-widest block mb-2 opacity-60">مجموع مستحقات المصنع</span>
+                  <p className="text-lg font-black text-orange-200 tracking-tighter">{formatCurrency(totalFactoryLiability)}</p>
+              </div>
+              {/* UPDATED: Net Future Collections Card */}
+              <div className="bg-blue-500/5 border border-blue-500/10 p-4 rounded-3xl text-center shadow-sm">
+                  <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest block mb-2 opacity-60">صافي التحصيلات المستقبلية</span>
+                  <p className="text-lg font-black text-blue-200 tracking-tighter">{formatCurrency(netFutureCollections)}</p>
+              </div>
            </div>
            
+           {/* Transactions List */}
            <div className="space-y-3">
-              {filteredFinance.slice().reverse().map((f: any) => (
-                <Card key={f.id} className={`!py-4 flex items-center justify-between group ${(f as any).isFuture ? 'opacity-70 border-dashed' : ''}`}>
+              {filteredFinance.map((f: any) => (
+                <Card key={f.id} className={`!py-4 flex items-center justify-between group ${(f as any).isFuture ? 'opacity-70 border-dashed border-blue-500/30' : ''}`}>
                   <div className="flex items-center gap-4">
-                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center border ${(f as any).isFuture ? 'bg-blue-500/10 border-blue-500/10 text-blue-500' : f.type === 'INCOME' ? 'bg-emerald-500/10 border-emerald-500/10 text-emerald-500' : 'bg-red-500/10 border-red-500/10 text-red-500'}`}>{(f as any).isFuture ? <Clock size={18}/> : f.type === 'INCOME' ? <TrendingUp size={18}/> : <ArrowDownCircle size={18}/>}</div>
-                    <div><h4 className="font-black text-sm text-white">{f.category}</h4><p className="text-[10px] text-slate-500 font-bold mt-0.5">{f.date} • {f.notes}</p></div>
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center border ${(f as any).isFuture ? 'bg-blue-500/10 border-blue-500/10 text-blue-500' : f.type === 'INCOME' ? 'bg-emerald-500/10 border-emerald-500/10 text-emerald-500' : 'bg-red-500/10 border-red-500/10 text-red-500'}`}>
+                        {(f as any).isFuture ? <Clock size={18}/> : f.type === 'INCOME' ? <TrendingUp size={18}/> : <ArrowDownCircle size={18}/>}
+                    </div>
+                    <div>
+                        <h4 className="font-black text-sm text-white">{f.category}</h4>
+                        <p className="text-[10px] text-slate-500 font-bold mt-0.5">{f.date} • {f.notes}</p>
+                    </div>
                   </div>
                   <div className="text-left flex flex-col items-end">
-                    <span className={`text-base font-black tracking-tighter ${(f as any).isFuture ? 'text-blue-400' : f.type === 'INCOME' ? 'text-emerald-400' : 'text-red-400'}`}>{f.type === 'INCOME' ? '+' : '-'}{formatCurrency(f.amount)}</span>
-                    {!((f as any).isFuture) && hasPerm('admin_reset') && <button onClick={async () => { if(confirm('حذف السجل المالي؟')) cloudDb.delete(COLLS.FINANCE, f.id); }} className="text-[9px] text-red-500/50 mt-1 hover:text-red-500 transition-colors">حذف</button>}
+                    <span className={`text-base font-black tracking-tighter ${(f as any).isFuture ? 'text-blue-400' : f.type === 'INCOME' ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {f.type === 'INCOME' ? '+' : '-'}{formatCurrency(f.amount)}
+                    </span>
+                    {!((f as any).isFuture) && hasPerm('admin_reset') && (
+                        <button onClick={async () => { if(confirm('حذف السجل المالي؟')) cloudDb.delete(COLLS.FINANCE, f.id); }} className="text-[9px] text-red-500/50 mt-1 hover:text-red-500 transition-colors">حذف</button>
+                    )}
                   </div>
                 </Card>
               ))}
@@ -2062,6 +2336,91 @@ function FinanceView({ finance, dresses, users, bookings, sales, query, hasPerm,
            </div>
         </div>
       )}
+
+      {/* --- TAB: PERFORMANCE --- */}
+      {subTab === 'performance' && (
+          <div className="space-y-4">
+              {performance.map((d: any, idx: number) => (
+                  <Card key={d.id} className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-slate-500 font-bold border border-white/5">
+                              #{idx + 1}
+                          </div>
+                          <div>
+                              <h4 className="font-black text-white text-base">{d.name}</h4>
+                              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">
+                                  تم التأجير: {d.usageCount} مرات
+                              </p>
+                          </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-8 text-center bg-slate-950/50 p-4 rounded-2xl border border-white/5 md:w-auto w-full">
+                          <div>
+                              <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest block mb-1">الدخل</span>
+                              <span className="text-sm font-black text-white">{formatCurrency(d.income)}</span>
+                          </div>
+                          <div>
+                              <span className="text-[9px] font-black text-red-500 uppercase tracking-widest block mb-1">المصروف</span>
+                              <span className="text-sm font-black text-white">{formatCurrency(d.expense)}</span>
+                          </div>
+                          <div>
+                              <span className="text-[9px] font-black text-brand-500 uppercase tracking-widest block mb-1">الربح</span>
+                              <span className={`text-sm font-black ${d.profit >= 0 ? 'text-brand-400' : 'text-red-400'}`}>{formatCurrency(d.profit)}</span>
+                          </div>
+                      </div>
+                  </Card>
+              ))}
+              {performance.length === 0 && <div className="text-center py-20 opacity-20"><Shirt size={64} className="mx-auto mb-4"/><p className="font-black uppercase tracking-widest text-sm">No rental dresses found</p></div>}
+          </div>
+      )}
+
+      {/* --- TAB: ANALYSIS --- */}
+      {subTab === 'analysis' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Expenses Breakdown */}
+              <Card>
+                  <h3 className="text-sm font-black text-red-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                      <ArrowDownCircle size={18}/> تحليل المصروفات
+                  </h3>
+                  <div className="space-y-4">
+                      {analysis.expenses.map((item: any) => (
+                          <div key={item.name}>
+                              <div className="flex justify-between text-xs font-bold mb-1">
+                                  <span className="text-white">{item.name}</span>
+                                  <span className="text-red-300">{formatCurrency(item.value)}</span>
+                              </div>
+                              <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                                  <div className="h-full bg-red-500 rounded-full" style={{ width: `${(item.value / (analysis.expenses[0]?.value || 1)) * 100}%` }}></div>
+                              </div>
+                          </div>
+                      ))}
+                      {analysis.expenses.length === 0 && <p className="text-center text-xs text-slate-500 py-10">لا توجد بيانات</p>}
+                  </div>
+              </Card>
+
+              {/* Income Breakdown */}
+              <Card>
+                  <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                      <TrendingUp size={18}/> تحليل الإيرادات
+                  </h3>
+                  <div className="space-y-4">
+                      {analysis.income.map((item: any) => (
+                          <div key={item.name}>
+                              <div className="flex justify-between text-xs font-bold mb-1">
+                                  <span className="text-white">{item.name}</span>
+                                  <span className="text-emerald-300">{formatCurrency(item.value)}</span>
+                              </div>
+                              <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(item.value / (analysis.income[0]?.value || 1)) * 100}%` }}></div>
+                              </div>
+                          </div>
+                      ))}
+                      {analysis.income.length === 0 && <p className="text-center text-xs text-slate-500 py-10">لا توجد بيانات</p>}
+                  </div>
+              </Card>
+          </div>
+      )}
+
+      {/* ADD MODAL */}
       {modal?.type === 'ADD' && (
         <Modal title="تسجيل عملية مالية" onClose={() => setModal(null)}>
            <form onSubmit={handleAdd} className="space-y-6">
