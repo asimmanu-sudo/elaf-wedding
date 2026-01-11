@@ -104,14 +104,14 @@ const InvoiceClone = ({ data, mode = 'DEPOSIT' }: { data: any, mode?: 'DEPOSIT' 
 
   const containerStyle: React.CSSProperties = {
     width: '210mm',
-    height: '297mm',
+    height: '296mm',
+    margin: '0 auto',
     display: 'flex',
     flexDirection: 'column',
     backgroundColor: 'white',
     color: '#1e293b',
     padding: '8mm',
     boxSizing: 'border-box',
-    overflow: 'hidden',
     position: 'relative'
   };
 
@@ -404,7 +404,7 @@ const InvoiceClone = ({ data, mode = 'DEPOSIT' }: { data: any, mode?: 'DEPOSIT' 
               <li>4. أي تعديل بسيط بعد التسليم يتم وفق الاتفاق، ويحق لمعرض إيلاف رفض أي تعديل قد يضر بالفستان أو تصميمه الأصلي.</li>
               <li>5. في حالة الشحن الدولي، المعرض غير مسؤول عن أي أضرار ناتجة عن الشحن، ويتم مراجعة الفستان من قبل مندوب للعروس أو عن طريق التصوير قبل الاستلام النهائي.</li>
               <li>6. إلغاء الطلب بعد بدء التفصيل يؤدي إلى فقدان العربون كاملاً، أما في حال الإلغاء قبل بدء التفصيل يُسترد العربون جزئياً حسب الاتفاق.</li>
-              <li>7. في حال السداد عن طريق عمله اجنبية (غير الجنيه المصري)، يتم احتساب سعر الصرف حسب سعر صرف يوم الدفع سواء للعربون او المتبقي، كما أن الأسعار المذكورة لا تشمل تكاليف الشحن الدولي.</li>
+              <li>7. في حال السداد عن طريق عمله اجنبية (غير الجنيه المصري)، يتم احتساب سعر الصرف حسب سعر صرف يوم الدفع سواء للعربون او المتبقي.</li>
               <li>8. يحق لمعرض إيلاف استخدام صور الفستان والتصميم لأغراض الدعاية والترويج بعد مناسبة العروس، دون أن يترتب على ذلك أي حق للعروس.</li>
               <li>9. بالتوقيع أدناه، تقر العروس بموافقتها على جميع الشروط أعلاه. الفاتوره الالكترونية مصدقة عن طريق الواتساب.</li>
             </>
@@ -468,7 +468,7 @@ export default function App() {
   const handlePrint = (item: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE' = 'DEPOSIT') => {
     setPrintMode(mode);
     setPrintingItem(item);
-    setTimeout(() => { window.print(); }, 400);
+    setTimeout(() => { window.print(); }, 800);
   };
 
   const hasPerm = (p: string) => user?.role === UserRole.ADMIN || user?.permissions.includes(p);
@@ -495,6 +495,30 @@ export default function App() {
 
   return (
     <>
+      <style>{`
+        @media print {
+          @page { size: A4; margin: 0; }
+          body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; }
+          #root { display: none; }
+          #printable-invoice-container {
+            display: block !important;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 210mm;
+            height: 100%;
+            margin: 0 auto;
+            background-color: white;
+            z-index: 9999;
+          }
+          /* Force single page height to avoid blank second page */
+          .print-invoice {
+             height: 296mm !important; 
+             overflow: hidden !important;
+             page-break-after: always;
+          }
+        }
+      `}</style>
       <div className={`h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden no-print ${isIOS ? 'ios-style' : 'android-style'}`} dir="rtl">
         <header className="pt-safe shrink-0 bg-slate-900/40 backdrop-blur-2xl border-b border-white/5 z-[100]">
           <div className="px-6 h-20 flex items-center gap-4">
