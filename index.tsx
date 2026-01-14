@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App';
+import App from "./src/App";
 
 console.log("Elaf Wedding App: Initializing from Root...");
 

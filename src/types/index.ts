@@ -1,3 +1,4 @@
+
 export enum UserRole { ADMIN = 'ADMIN', EMPLOYEE = 'EMPLOYEE' }
 export enum DressType { SALE = 'بيع', RENT = 'إيجار' }
 export enum DressStatus { AVAILABLE = 'متاح', RENTED = 'مؤجر', CLEANING = 'يحتاج تنظيف', SOLD = 'مباع', ARCHIVED = 'مؤرشف' }
@@ -65,6 +66,7 @@ export interface SaleOrder {
   paymentMethod?: string;
   otherPaymentMethod?: string;
   actualDeliveryDate?: string;
+  staffName?: string;
 }
 
 export interface Booking {
@@ -128,4 +130,46 @@ export interface AuditLog {
   username: string;
   timestamp: string;
   details: string;
+}
+
+// --- LIFE BUDGET TYPES ---
+
+export type CurrencyCode = 'EGP' | 'SDG' | 'USD';
+
+export interface PersonalTransaction {
+  id: string;
+  type: 'INCOME' | 'EXPENSE' | 'TRANSFER' | 'EXCHANGE';
+  category?: string; 
+  amount: number;
+  currency: CurrencyCode;
+  date: string;
+  description: string;
+  beneficiary?: string; // Who spent this money (Family Member)
+  targetGoalId?: string; 
+  exchangeRate?: number;
+  toCurrency?: CurrencyCode;
+}
+
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  currency: CurrencyCode;
+  deadline?: string;
+  status: 'ACTIVE' | 'COMPLETED';
+}
+
+export interface UnifiedSettings {
+  id?: string;
+  docType: 'UNIFIED_CONFIG';
+  // Shop Constants
+  rentOpsFee: number;
+  staffRatio: number;
+  // Home Constants
+  familyMembers: string[];
+  budgetPlan: {
+    category: string;
+    percentage: number;
+  }[];
 }
