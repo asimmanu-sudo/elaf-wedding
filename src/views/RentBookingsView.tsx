@@ -1,8 +1,9 @@
+
 import React, { useState, useMemo } from 'react';
-import { Plus, Printer, Ruler, Edit, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Printer, Ruler, Edit, Trash2, AlertTriangle, Calculator, RefreshCw, Check, X, Info } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { BookingStatus, DressType, DressStatus } from '../types';
-import { Button, Input, Modal, Card } from '../components/UI';
+import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
 import { today, formatCurrency } from '../utils/helpers';
 import { PAYMENT_METHODS, MEASUREMENT_FIELDS } from '../utils/constants';
 
@@ -11,6 +12,14 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
   const [modal, setModal] = useState<any>(null);
   const [pendingSave, setPendingSave] = useState<any>(null);
   const [printFilter, setPrintFilter] = useState({ month: '', selectedIds: [] as string[] });
+
+  // SMART CALCULATION STATE
+  const [calcState, setCalcState] = useState({ 
+    currency: 'EGP', 
+    egpAmount: 0, 
+    foreignAmount: 0, 
+    rate: 0 
+  });
 
   const filtered = useMemo(() => {
     return bookings.filter((b: any) => (b.customerName.toLowerCase().includes(query.toLowerCase()))).filter((b: any) => {
@@ -22,7 +31,11 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
   }, [bookings, subTab, query]);
 
   const handleDelete = async (b: any) => {
-    if (!confirm('سيتم حذف الحجز وكافة العمليات المالية المرتبطة به. هل أنت متأكد؟')) return;
+    // Open Confirmation Modal instead of window.confirm
+    setModal({ type: 'CONFIRM_DELETE', data: b });
+  };
+
+  const executeDelete = async (b: any) => {
     try {
       await cloudDb.delete(COLLS.BOOKINGS, b.id);
       const relatedFinance = (finance || []).filter((f: any) => f.relatedId === b.id);
@@ -31,38 +44,74 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
       }
       showToast('تم حذف الحجز وتصفية المالية');
       addLog('حذف حجز', `تم حذف حجز العروس ${b.customerName} وتصفية عملياته المالية`);
+      setModal(null);
     } catch (err) {
       showToast('خطأ في الحذف', 'error');
     }
+  };
+
+  const handleFitting1Click = async (b: any) => {
+      const isDone = b.fitting1Done;
+      
+      // If currently DONE, just toggle it OFF (simple undo)
+      if (isDone) {
+          await cloudDb.update(COLLS.BOOKINGS, b.id, { fitting1Done: false });
+          return;
+      }
+
+      // If currently NOT DONE, show custom modal for workflow
+      setModal({ type: 'CONFIRM_FITTING_WORKFLOW', data: b });
+  };
+
+  const executeFittingWorkflow = async (b: any, openMeasurements: boolean) => {
+      await cloudDb.update(COLLS.BOOKINGS, b.id, { fitting1Done: true });
+      if (openMeasurements) {
+          setModal({ ...b, type: 'MEASURE' });
+      } else {
+          setModal(null);
+      }
   };
 
   const executeSave = async (data: any) => {
      let bId = data.id;
      const isAdd = !bId; 
 
+     // Attach currency data if foreign
+     const finalData = {
+        ...data,
+        originalCurrency: calcState.currency !== 'EGP' ? calcState.currency : 'EGP',
+        foreignAmount: calcState.currency !== 'EGP' ? calcState.foreignAmount : 0,
+        exchangeRate: calcState.currency !== 'EGP' ? calcState.rate : 1,
+     };
+
      if (isAdd) {
-       bId = await cloudDb.add(COLLS.BOOKINGS, data);
+       bId = await cloudDb.add(COLLS.BOOKINGS, finalData);
        
-       const dress = dresses.find((d: any) => d.id === data.dressId);
+       const dress = dresses.find((d: any) => d.id === finalData.dressId);
        if (dress) {
           await cloudDb.update(COLLS.DRESSES, dress.id, { rentalCount: (dress.rentalCount || 0) + 1 });
        }
 
-       const deposit = Number(data.paidDeposit);
+       const deposit = Number(finalData.paidDeposit);
        if (deposit > 0) {
           await cloudDb.add(COLLS.FINANCE, {
-            amount: deposit, type: 'INCOME', category: 'حجز إيجار',
-            notes: `عربون حجز فستان ${data.dressName} للعروس ${data.customerName}`,
-            date: data.createdAt, relatedId: bId
+            amount: deposit, // EGP Value
+            currency: finalData.originalCurrency,
+            currencyAmount: finalData.foreignAmount || deposit,
+            exchangeRate: finalData.exchangeRate,
+            type: 'INCOME', category: 'حجز إيجار',
+            notes: `عربون حجز فستان ${finalData.dressName} للعروس ${finalData.customerName}`,
+            date: finalData.createdAt, relatedId: bId
           });
           showToast('تم تسجيل عملية مالية بقيمة: ' + deposit);
        }
      } else {
-       await cloudDb.update(COLLS.BOOKINGS, data.id, data);
+       await cloudDb.update(COLLS.BOOKINGS, finalData.id, finalData);
      }
      showToast('تم الحفظ بنجاح'); 
      setModal(null);
      setPendingSave(null);
+     setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
   };
 
   const filteredForPrint = useMemo(() => {
@@ -71,8 +120,64 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
       .sort((a: any, b: any) => a.eventDate.localeCompare(b.eventDate));
   }, [bookings, printFilter.month]);
 
+  // --- SMART CALCULATION LOGIC ---
+  const handlePaymentMethodChange = (pm: string) => {
+      let curr = 'EGP';
+      if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
+      else if (pm.includes('دولار') || pm.includes('Western') || pm.includes('USD')) curr = 'USD';
+      
+      setCalcState(prev => ({ ...prev, currency: curr, rate: 0, foreignAmount: 0 }));
+      setModal((prev:any) => ({...prev, paymentMethod: pm }));
+  };
+
+  const handleEgpChange = (val: number) => {
+      setCalcState(prev => {
+          if (prev.rate === 0) return { ...prev, egpAmount: val };
+          let newForeign = 0;
+          if (prev.currency === 'SDG') {
+              // SDG logic: Foreign = EGP * Rate (since Rate is SDG per 1 EGP)
+              newForeign = val * prev.rate;
+          } else {
+              // USD logic: Foreign = EGP / Rate
+              newForeign = val / prev.rate;
+          }
+          return { ...prev, egpAmount: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
+      });
+  };
+
+  const handleRateChange = (val: number) => {
+      setCalcState(prev => {
+          let newForeign = 0;
+          if (prev.currency === 'SDG') {
+              // SDG: Foreign = EGP * Rate
+              newForeign = prev.egpAmount * val;
+          } else {
+              // USD: Foreign = EGP / Rate
+              newForeign = val > 0 ? prev.egpAmount / val : 0;
+          }
+          return { ...prev, rate: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
+      });
+  };
+
+  const handleForeignChange = (val: number) => {
+      setCalcState(prev => {
+          let newRate = 0;
+          if (prev.egpAmount > 0) {
+              if (prev.currency === 'SDG') {
+                  // SDG: Rate = Foreign / EGP
+                  newRate = val / prev.egpAmount;
+              } else {
+                  // USD: Rate = EGP / Foreign
+                  newRate = val > 0 ? prev.egpAmount / val : 0;
+              }
+          }
+          return { ...prev, foreignAmount: val, rate: parseFloat(newRate.toFixed(4)) };
+      });
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
+       {/* Top Bar */}
        <div className="flex bg-slate-900/60 p-1.5 rounded-2xl border border-white/5 sticky top-0 z-50 backdrop-blur-xl shadow-lg">
         {['current', 'past', 'fittings'].map(t => (
           <button key={t} onClick={() => setSubTab(t as any)} className={`flex-1 h-11 rounded-xl text-[11px] font-black transition-all uppercase tracking-widest ${subTab === t ? 'bg-brand-600 text-white shadow-lg' : 'text-surface-500 hover:text-white'}`}>
@@ -82,10 +187,11 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
       </div>
 
       <div className="flex gap-2">
-        {subTab === 'current' && hasPerm('add_booking') && <Button onClick={() => setModal({ type: 'ADD' })} className="flex-1 !rounded-[2.5rem] h-16 shadow-xl"><Plus size={20}/> تسجيل حجز جديد</Button>}
+        {subTab === 'current' && hasPerm('add_booking') && <Button onClick={() => { setModal({ type: 'ADD' }); setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 }); }} className="flex-1 !rounded-[2.5rem] h-16 shadow-xl"><Plus size={20}/> تسجيل حجز جديد</Button>}
         {subTab === 'current' && <Button variant="ghost" onClick={() => setModal({ type: 'PRINT_SCHEDULE' })} className="!w-16 !h-16 !rounded-[2.5rem] border-white/10"><Printer size={22}/></Button>}
       </div>
 
+      {/* Bookings Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {subTab === 'fittings' ? (
           filtered.map((b: any) => (
@@ -97,7 +203,13 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
               <div className="grid grid-cols-2 gap-4">
                 <div className={`p-4 rounded-2xl border ${b.fitting1Done ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-950 border-white/5'}`}>
                   <p className="text-[9px] font-black text-slate-500 uppercase mb-2">البروفه الأولى</p>
-                  <Button variant={b.fitting1Done ? 'success' : 'ghost'} className="w-full h-10 text-xs" onClick={() => cloudDb.update(COLLS.BOOKINGS, b.id, { fitting1Done: !b.fitting1Done })}>{b.fitting1Done ? 'تمت البروفه' : 'تأكيد الأولى'}</Button>
+                  <Button 
+                    variant={b.fitting1Done ? 'success' : 'ghost'} 
+                    className="w-full h-10 text-xs" 
+                    onClick={() => handleFitting1Click(b)}
+                  >
+                    {b.fitting1Done ? 'تمت البروفه' : 'تأكيد الأولى'}
+                  </Button>
                 </div>
                 <div className={`p-4 rounded-2xl border ${b.fitting2Done ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-950 border-white/5'}`}>
                   <p className="text-[9px] font-black text-slate-500 uppercase mb-2">البروفه الثانية</p>
@@ -106,29 +218,68 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
               </div>
             </Card>
           ))
-        ) : filtered.map((b: any) => (
-          <Card key={b.id} className="relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-1.5 h-full bg-brand-500 opacity-20"></div>
-            <div className="flex justify-between items-start mb-6">
-              <div><h4 className="text-xl font-black text-white tracking-tight">{b.customerName}</h4><p className="text-xs font-bold text-surface-500 mt-1 tracking-widest" dir="ltr">{b.customerPhone}</p></div>
-              <span className="px-3 py-1 bg-brand-500/10 text-brand-400 rounded-lg text-[10px] font-black uppercase tracking-widest border border-brand-500/10">{b.status}</span>
-            </div>
-            <div className="grid grid-cols-2 gap-6 bg-slate-950/40 p-5 rounded-2xl border border-white/5 mb-6">
-              <div><span className="text-[9px] font-black text-surface-500 uppercase tracking-widest block mb-1">الفستان</span><p className="text-sm font-bold text-white italic truncate">{b.dressName}</p></div>
-              <div><span className="text-[9px] font-black text-surface-500 uppercase tracking-widest block mb-1">المناسبة</span><p className="text-sm font-bold text-white tracking-tight">{b.eventDate}</p></div>
-              <div><span className="text-[9px] font-black text-surface-500 uppercase tracking-widest block mb-1">المتبقي</span><p className="text-sm font-black text-red-400">{formatCurrency(b.remainingToPay)}</p></div>
-              <div><span className="text-[9px] font-black text-surface-500 uppercase tracking-widest block mb-1">تاريخ التسليم</span><p className="text-sm font-black text-emerald-400 tracking-tight">{b.deliveryDate}</p></div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setModal({ ...b, type: 'MEASURE' })} className="flex-1 !h-12 !text-[11px] font-bold"><Ruler size={16}/> المقاسات</Button>
-              <Button variant="ghost" onClick={() => onPrint(b, 'DEPOSIT')} className="!w-12 !h-12 !p-0 text-brand-400"><Printer size={18}/></Button>
-              <Button variant="ghost" onClick={() => setModal({ ...b, type: 'EDIT' })} className="!w-12 !h-12 !p-0 text-surface-500"><Edit size={18}/></Button>
-              <Button variant="ghost" onClick={() => handleDelete(b)} className="!w-12 !h-12 !p-0 text-red-400"><Trash2 size={18}/></Button>
-            </div>
-          </Card>
-        ))}
+        ) : filtered.map((b: any) => {
+          const hasMeasurements = b.measurements && Object.keys(b.measurements).length > 0;
+          return (
+            <Card key={b.id} className="relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-1.5 h-full bg-brand-500 opacity-20"></div>
+              <div className="flex justify-between items-start mb-6">
+                <div><h4 className="text-xl font-black text-white tracking-tight">{b.customerName}</h4><p className="text-xs font-bold text-surface-500 mt-1 tracking-widest" dir="ltr">{b.customerPhone}</p></div>
+                <span className="px-3 py-1 bg-brand-500/10 text-brand-400 rounded-lg text-[10px] font-black uppercase tracking-widest border border-brand-500/10">{b.status}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-6 bg-slate-950/40 p-5 rounded-2xl border border-white/5 mb-6">
+                <div><span className="text-[9px] font-black text-surface-500 uppercase tracking-widest block mb-1">الفستان</span><p className="text-sm font-bold text-white italic truncate">{b.dressName}</p></div>
+                <div><span className="text-[9px] font-black text-surface-500 uppercase tracking-widest block mb-1">المناسبة</span><p className="text-sm font-bold text-white tracking-tight">{b.eventDate}</p></div>
+                <div><span className="text-[9px] font-black text-surface-500 uppercase tracking-widest block mb-1">المتبقي</span><p className="text-sm font-black text-red-400">{formatCurrency(b.remainingToPay)}</p></div>
+                <div><span className="text-[9px] font-black text-surface-500 uppercase tracking-widest block mb-1">تاريخ التسليم</span><p className="text-sm font-black text-emerald-400 tracking-tight">{b.deliveryDate}</p></div>
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  variant="ghost" 
+                  onClick={() => setModal({ ...b, type: 'MEASURE' })} 
+                  className={`flex-1 !h-12 !text-[10px] font-bold ${hasMeasurements ? 'text-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10' : 'text-orange-400 bg-orange-500/5 hover:bg-orange-500/10'}`}
+                >
+                  {hasMeasurements ? <Check size={16}/> : <Ruler size={16}/>}
+                  {hasMeasurements ? 'تم أخذ المقاسات' : 'لم يتم تسجيل المقاسات'}
+                </Button>
+                
+                <Button variant="ghost" onClick={() => onPrint(b, 'DEPOSIT')} className="!w-12 !h-12 !p-0 text-brand-400"><Printer size={18}/></Button>
+                <Button variant="ghost" onClick={() => setModal({ ...b, type: 'EDIT' })} className="!w-12 !h-12 !p-0 text-surface-500"><Edit size={18}/></Button>
+                <Button variant="ghost" onClick={() => handleDelete(b)} className="!w-12 !h-12 !p-0 text-red-400"><Trash2 size={18}/></Button>
+              </div>
+            </Card>
+          );
+        })}
       </div>
 
+      {/* CONFIRM DELETE MODAL */}
+      {modal?.type === 'CONFIRM_DELETE' && (
+        <ConfirmModal 
+          title="حذف الحجز"
+          msg="سيتم حذف الحجز وكافة العمليات المالية المرتبطة به. هل أنت متأكد؟"
+          onConfirm={() => executeDelete(modal.data)}
+          onCancel={() => setModal(null)}
+          confirmText="نعم، حذف نهائي"
+        />
+      )}
+
+      {/* CONFIRM FITTING WORKFLOW MODAL */}
+      {modal?.type === 'CONFIRM_FITTING_WORKFLOW' && (
+        <Modal title="تأكيد البروفة الأولى" onClose={() => setModal(null)} size="sm">
+           <div className="text-center space-y-6">
+              <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto bg-brand-500/10 text-brand-500 border border-brand-500/20">
+                 <Ruler size={40} />
+              </div>
+              <p className="text-white font-bold text-lg leading-relaxed">تم تأكيد البروفة الأولى. هل تريد تسجيل المقاسات الآن؟</p>
+              <div className="grid grid-cols-2 gap-4 pt-2">
+                 <Button variant="ghost" onClick={() => executeFittingWorkflow(modal.data, false)} className="!rounded-xl">لا، فقط تأكيد البروفة</Button>
+                 <Button variant="primary" onClick={() => executeFittingWorkflow(modal.data, true)} className="!rounded-xl">نعم، تسجيل المقاسات</Button>
+              </div>
+           </div>
+        </Modal>
+      )}
+
+      {/* Modal - Print Schedule */}
       {modal?.type === 'PRINT_SCHEDULE' && (
         <Modal title="طباعة جدول الحجوزات" onClose={() => setModal(null)} size="lg">
            <div className="space-y-6">
@@ -174,6 +325,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
         </Modal>
       )}
 
+      {/* Modal - Add/Edit Booking */}
       {(modal?.type === 'ADD' || modal?.type === 'EDIT') && (
         <Modal title={modal.type === 'ADD' ? 'حجز جديد' : 'تعديل حجز'} onClose={() => setModal(null)} size="lg">
            <form onSubmit={async (e: any) => {
@@ -181,21 +333,8 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
              const fd = new FormData(e.currentTarget);
              const drId = fd.get('dr') as string;
              const dr = dresses.find((x:any) => x.id === drId);
-             const rp = Number(fd.get('rp')); const dep = Number(fd.get('dep'));
+             const rp = Number(fd.get('rp')); const dep = calcState.egpAmount || Number(fd.get('dep'));
              
-             if (dep > rp) {
-                 setPendingSave({
-                     customerName: fd.get('cn'), customerPhone: fd.get('ph'), customerAddress: fd.get('ca'),
-                     dressId: drId, dressName: dr?.name || '', eventDate: fd.get('ed'), deliveryDate: fd.get('dd'),
-                     rentalPrice: rp, paidDeposit: dep, remainingToPay: rp - dep, notes: fd.get('notes'),
-                     paymentMethod: fd.get('pm'), otherPaymentMethod: fd.get('opm') || '',
-                     id: modal.id, // For Edit case
-                     isEdit: modal.type === 'EDIT'
-                 });
-                 setModal({ type: 'VALIDATION_WARNING', msg: 'قيمة العربون أكبر من سعر الإيجار!' });
-                 return;
-             }
-
              const data: any = {
                customerName: fd.get('cn'), customerPhone: fd.get('ph'), customerAddress: fd.get('ca'),
                dressId: drId, dressName: dr?.name || '', eventDate: fd.get('ed'), deliveryDate: fd.get('dd'),
@@ -205,21 +344,23 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                paymentMethod: fd.get('pm'), otherPaymentMethod: fd.get('opm') || ''
              };
 
-             if (modal.type === 'EDIT') {
-                data.id = modal.id;
-             }
+             if (modal.type === 'EDIT') data.id = modal.id;
              
+             if (dep > rp) {
+                 setPendingSave({ ...data, id: modal.id, isEdit: modal.type === 'EDIT' });
+                 setModal({ type: 'VALIDATION_WARNING', msg: 'قيمة العربون أكبر من سعر الإيجار!' });
+                 return;
+             }
+
              if (data.status !== BookingStatus.CANCELLED && data.status !== BookingStatus.COMPLETED) {
                  const targetDate = new Date(data.eventDate);
                  const conflicts = bookings.filter((b: any) => {
                      if (b.dressId !== data.dressId) return false;
                      if (b.status === BookingStatus.CANCELLED || b.status === BookingStatus.COMPLETED) return false;
                      if (modal.type === 'EDIT' && b.id === modal.id) return false;
-                     
                      const bDate = new Date(b.eventDate);
                      const diff = Math.abs(targetDate.getTime() - bDate.getTime());
-                     const days = Math.ceil(diff / (1000 * 3600 * 24));
-                     return days <= 2;
+                     return Math.ceil(diff / (1000 * 3600 * 24)) <= 2;
                  });
 
                  if (conflicts.length > 0) {
@@ -236,6 +377,52 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                <Input label="رقم الهاتف" name="ph" defaultValue={modal.customerPhone} required />
              </div>
              <Input label="العنوان" name="ca" defaultValue={modal.customerAddress} />
+             
+             <div className="grid grid-cols-2 gap-4">
+               <Input label="سعر الإيجار (EGP)" name="rp" type="number" defaultValue={modal.rentalPrice} required />
+               <Input label="العربون بالمصري (EGP)" name="dep" type="number" defaultValue={modal.paidDeposit} required onChange={(e:any) => handleEgpChange(Number(e.target.value))} />
+             </div>
+
+             <div className="space-y-2">
+               <label className="text-[11px] font-black text-white px-4 leading-none italic uppercase tracking-widest">طريقة الدفع (العربون)</label>
+               <select name="pm" className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-brand-500" defaultValue={modal.paymentMethod} onChange={(e:any)=>handlePaymentMethodChange(e.target.value)} required>
+                  <option value="">-- اختر --</option>
+                  {PAYMENT_METHODS.map(p=><option key={p} value={p}>{p}</option>)}
+               </select>
+               
+               {/* SMART CURRENCY CALCULATOR */}
+               {calcState.currency !== 'EGP' && (
+                 <div className="p-4 bg-brand-500/5 border border-brand-500/20 rounded-2xl animate-slide-up grid grid-cols-2 gap-4">
+                    <div className="col-span-2 flex items-center justify-between text-brand-400 mb-1">
+                        <div className="flex items-center gap-2"><Calculator size={16}/> <span className="text-xs font-bold">حاسبة العملة ({calcState.currency})</span></div>
+                        <RefreshCw size={14} className="opacity-50"/>
+                    </div>
+                    
+                    <Input 
+                      label={`المبلغ بالـ ${calcState.currency}`} 
+                      type="number" 
+                      value={calcState.foreignAmount || ''}
+                      onChange={(e:any) => handleForeignChange(Number(e.target.value))} 
+                      placeholder="0.00" 
+                    />
+                    <Input 
+                      label={calcState.currency === 'SDG' ? `سعر التحويل (كم ${calcState.currency} = 1 جنيه)` : `سعر التحويل (1 ${calcState.currency} = كم جنيه)`}
+                      type="number" 
+                      value={calcState.rate || ''}
+                      placeholder="مثلاً 55" 
+                      onChange={(e:any) => handleRateChange(Number(e.target.value))}
+                    />
+                    <p className="col-span-2 text-[10px] text-center text-slate-500 dir-ltr font-mono">
+                       Formula: {calcState.currency === 'SDG' 
+                         ? `${calcState.foreignAmount} ${calcState.currency} / ${calcState.rate} Rate = ${calcState.egpAmount} EGP`
+                         : `${calcState.foreignAmount} ${calcState.currency} * ${calcState.rate} Rate = ${calcState.egpAmount} EGP`}
+                    </p>
+                 </div>
+               )}
+
+               {(modal.payMethod === 'أخرى' || modal.paymentMethod === 'أخرى') && <Input label="تفاصيل الدفع الأخرى" name="opm" defaultValue={modal.otherPaymentMethod} required />}
+             </div>
+
              <div className="space-y-2">
                <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">الفستان</label>
                <select name="dr" className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all" defaultValue={modal.dressId} required>
@@ -261,18 +448,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                }} />
                <Input label="تاريخ التسليم" name="dd" type="date" defaultValue={modal.deliveryDate} required />
              </div>
-             <div className="grid grid-cols-2 gap-4">
-               <Input label="سعر الإيجار" name="rp" type="number" defaultValue={modal.rentalPrice} required />
-               <Input label="العربون" name="dep" type="number" defaultValue={modal.paidDeposit} required />
-             </div>
-             <div className="space-y-2">
-               <label className="text-[11px] font-black text-white px-4 leading-none italic uppercase tracking-widest">طريقة الدفع</label>
-               <select name="pm" className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-brand-500" defaultValue={modal.paymentMethod} onChange={(e:any)=>setModal({...modal, payMethod: e.target.value})} required>
-                  <option value="">-- اختر --</option>
-                  {PAYMENT_METHODS.map(p=><option key={p} value={p}>{p}</option>)}
-               </select>
-               {(modal.payMethod === 'أخرى' || modal.paymentMethod === 'أخرى') && <Input label="تفاصيل الدفع الأخرى" name="opm" defaultValue={modal.otherPaymentMethod} required />}
-             </div>
+             
              <textarea name="notes" placeholder="ملاحظات..." defaultValue={modal.notes} className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold min-h-[100px]" />
              <Button className="w-full mt-4 !rounded-2xl">حفظ الحجز</Button>
            </form>

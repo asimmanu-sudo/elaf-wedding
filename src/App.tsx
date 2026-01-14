@@ -22,6 +22,62 @@ import LifeBudgetView from './views/LifeBudgetView';
 import LogsView from './views/LogsView';
 import SettingsView from './views/SettingsView';
 
+// --- THEME CONFIGURATION (RGB CHANNELS FOR TAILWIND VARS) ---
+const THEMES: any = {
+  default: {
+    // Brand: Purple/Fuchsia (Default)
+    '--color-brand-50': '253 244 255',
+    '--color-brand-100': '250 232 255',
+    '--color-brand-200': '245 208 254',
+    '--color-brand-300': '240 171 252',
+    '--color-brand-400': '232 121 249',
+    '--color-brand-500': '217 70 239',
+    '--color-brand-600': '192 38 211',
+    '--color-brand-700': '162 28 175',
+    '--color-brand-800': '134 25 143',
+    '--color-brand-900': '112 26 117',
+    '--color-brand-950': '74 4 78',
+    // Base: Slate (Blue-ish Gray)
+    '--color-base-50': '248 250 252',
+    '--color-base-100': '241 245 249',
+    '--color-base-200': '226 232 240',
+    '--color-base-300': '203 213 225',
+    '--color-base-400': '148 163 184',
+    '--color-base-500': '100 116 139',
+    '--color-base-600': '71 85 105',
+    '--color-base-700': '51 65 85',
+    '--color-base-800': '30 41 59',
+    '--color-base-900': '15 23 42',
+    '--color-base-950': '2 6 23',
+  },
+  warm_gold: {
+    // Brand: Rich Gold / Amber (Approximated RGBs from Hex)
+    '--color-brand-50': '251 248 242',
+    '--color-brand-100': '245 239 224',
+    '--color-brand-200': '234 219 179',
+    '--color-brand-300': '222 195 133',
+    '--color-brand-400': '212 175 55', // Metallic Gold
+    '--color-brand-500': '184 150 40',
+    '--color-brand-600': '150 120 28',
+    '--color-brand-700': '117 92 18',
+    '--color-brand-800': '87 67 13',
+    '--color-brand-900': '61 47 8',
+    '--color-brand-950': '38 28 3',
+    // Base: Stone (Warm Gray / Brownish)
+    '--color-base-50': '250 250 249',
+    '--color-base-100': '245 245 244',
+    '--color-base-200': '231 229 228',
+    '--color-base-300': '214 211 209',
+    '--color-base-400': '168 162 158',
+    '--color-base-500': '120 113 108',
+    '--color-base-600': '87 83 78',
+    '--color-base-700': '68 64 60',
+    '--color-base-800': '41 37 36',
+    '--color-base-900': '28 25 23',
+    '--color-base-950': '12 10 9',
+  }
+};
+
 // --- ERROR BOUNDARY COMPONENT ---
 class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) {
@@ -71,6 +127,9 @@ function AppContent() {
   const [toasts, setToasts] = useState<any[]>([]);
   const [printingItem, setPrintingItem] = useState<any>(null);
   const [printMode, setPrintMode] = useState<'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE'>('DEPOSIT');
+  
+  // Theme State
+  const [theme, setTheme] = useState(localStorage.getItem('app_theme') || 'default');
 
   // Database States
   const [dresses, setDresses] = useState([]);
@@ -81,13 +140,22 @@ function AppContent() {
   const [logs, setLogs] = useState([]);
 
   useEffect(() => {
+    // Listen for theme changes from SettingsView
+    const handleThemeChange = () => {
+      setTheme(localStorage.getItem('app_theme') || 'default');
+    };
+    window.addEventListener('theme-change', handleThemeChange);
+
     const unsubD = cloudDb.subscribe(COLLS.DRESSES, setDresses);
     const unsubB = cloudDb.subscribe(COLLS.BOOKINGS, setBookings);
     const unsubS = cloudDb.subscribe(COLLS.SALES, setSales);
     const unsubF = cloudDb.subscribe(COLLS.FINANCE, setFinance);
     const unsubU = cloudDb.subscribe(COLLS.USERS, setUsers);
     const unsubL = cloudDb.subscribe(COLLS.LOGS, setLogs);
-    return () => { unsubD(); unsubB(); unsubS(); unsubF(); unsubU(); unsubL(); };
+    return () => { 
+      window.removeEventListener('theme-change', handleThemeChange);
+      unsubD(); unsubB(); unsubS(); unsubF(); unsubU(); unsubL(); 
+    };
   }, []);
 
   const showToast = (msg: string, type: 'success' | 'error' | 'warning' = 'success') => {
@@ -108,21 +176,30 @@ function AppContent() {
 
   const hasPerm = (p: string) => user?.role === UserRole.ADMIN || user?.permissions.includes(p);
 
+  // Apply Theme Variables
+  const themeStyles = THEMES[theme] || THEMES['default'];
+
   if (!user) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8 animate-fade-in no-print">
-        <img src="/Logo.png" alt="Logo" className="w-44 mb-10 object-contain drop-shadow-2xl" />
-        <div className="w-full max-sm bg-slate-900/50 backdrop-blur-xl border border-white/5 p-10 rounded-[3.5rem] shadow-2xl">
-          <form onSubmit={(e: any) => {
-            e.preventDefault();
-            const fd = new FormData(e.currentTarget);
-            const foundUser = users.find((x: any) => x.username === fd.get('u') && x.password === fd.get('p'));
-            if (foundUser) { setUser(foundUser); } else { showToast('بيانات الدخول غير صحيحة', 'error'); }
-          }} className="space-y-6">
-            <Input name="u" placeholder="اسم المستخدم" required />
-            <Input name="p" type="password" placeholder="كلمة المرور" required />
-            <Button className="w-full h-16 text-lg mt-6">دخول النظام</Button>
-          </form>
+      <div 
+        className="min-h-screen flex flex-col items-center justify-center p-8 animate-fade-in no-print bg-slate-950 bg-[url('/store-bg.jpg')] bg-cover bg-center relative"
+      >
+        <div className={`absolute inset-0 backdrop-blur-[2px] ${theme === 'warm_gold' ? 'bg-stone-950/85' : 'bg-slate-950/90'}`}></div> {/* Dynamic Overlay */}
+        
+        <div className="relative z-10 flex flex-col items-center w-full max-w-sm">
+          <img src="/Logo.png" alt="Logo" className="w-44 mb-10 object-contain drop-shadow-2xl" />
+          <div className={`w-full backdrop-blur-xl border border-white/10 p-10 rounded-[3.5rem] shadow-2xl ${theme === 'warm_gold' ? 'bg-[#1c1917]/70' : 'bg-slate-900/60'}`}>
+            <form onSubmit={(e: any) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              const foundUser = users.find((x: any) => x.username === fd.get('u') && x.password === fd.get('p'));
+              if (foundUser) { setUser(foundUser); } else { showToast('بيانات الدخول غير صحيحة', 'error'); }
+            }} className="space-y-6">
+              <Input name="u" placeholder="اسم المستخدم" required className="!bg-black/40 !border-white/10 placeholder:text-white/50" />
+              <Input name="p" type="password" placeholder="كلمة المرور" required className="!bg-black/40 !border-white/10 placeholder:text-white/50" />
+              <Button className={`w-full h-16 text-lg mt-6 text-white border-none ${theme === 'warm_gold' ? 'bg-[#D4AF37] hover:bg-[#B89628] shadow-[#D4AF37]/20' : 'bg-brand-600 hover:bg-brand-500 shadow-brand-500/20'}`}>دخول النظام</Button>
+            </form>
+          </div>
         </div>
       </div>
     );
@@ -157,7 +234,13 @@ function AppContent() {
           .print-invoice { height: 296mm !important; overflow: hidden !important; page-break-after: always; }
         }
       `}</style>
-      <div className={`h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden no-print ${isIOS ? 'ios-style' : 'android-style'}`} dir="rtl">
+      
+      {/* Root Application Wrapper with Dynamic Variables */}
+      <div 
+        className={`h-full flex flex-col text-slate-100 overflow-hidden no-print ${isIOS ? 'ios-style' : 'android-style'} ${theme === 'warm_gold' ? 'bg-stone-950' : 'bg-slate-950'}`} 
+        dir="rtl"
+        style={themeStyles as React.CSSProperties}
+      >
         <header className="pt-safe shrink-0 bg-slate-900/40 backdrop-blur-2xl border-b border-white/5 z-[100]">
           <div className="px-6 h-20 flex items-center gap-4">
             <div className="flex-1 relative group">
@@ -185,7 +268,7 @@ function AppContent() {
           {activeTab === 'finance' && <FinanceView finance={finance} dresses={dresses} users={users} bookings={bookings} sales={sales} query={searchQuery} hasPerm={hasPerm} showToast={showToast} addLog={addLog} />}
           {activeTab === 'life_budget' && <LifeBudgetView query={searchQuery} bookings={bookings} sales={sales} />}
           {activeTab === 'logs' && <LogsView logs={logs} query={searchQuery} />}
-          {activeTab === 'settings' && <SettingsView user={user} users={users} bookings={bookings} sales={sales} finance={finance} dresses={dresses} hasPerm={hasPerm} showToast={showToast} addLog={addLog} />}
+          {activeTab === 'settings' && <SettingsView user={user} users={users} bookings={bookings} sales={sales} finance={finance} dresses={dresses} hasPerm={hasPerm} showToast={showToast} addLog={addLog} onThemeChange={setTheme} />}
         </main>
 
         <nav className="shrink-0 pb-safe bg-slate-900/80 backdrop-blur-3xl border-t border-white/5 fixed bottom-0 left-0 right-0 z-[200]">
@@ -193,7 +276,7 @@ function AppContent() {
             {visibleNavItems.map((item: any) => (
               <button 
                 key={item.id} onClick={() => { setActiveTab(item.id); setSearchQuery(''); }}
-                className={`flex-col items-center justify-center min-w-[85px] transition-all ${activeTab === item.id ? 'text-brand-500 scale-105' : 'text-slate-500'}`}
+                className={`flex flex-col items-center justify-center min-w-[85px] transition-all ${activeTab === item.id ? 'text-brand-500 scale-105' : 'text-slate-500'}`}
               >
                 <div className={`w-12 h-9 flex items-center justify-center rounded-full transition-all ${activeTab === item.id ? 'bg-brand-500/10' : ''}`}>
                   <IconByName name={item.icon} size={20} strokeWidth={activeTab === item.id ? 2.5 : 2} />

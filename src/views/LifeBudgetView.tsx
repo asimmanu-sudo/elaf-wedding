@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  Wallet, TrendingUp, PieChart, Target, ShoppingCart, RefreshCw, Settings, Save, Users, Trash2, Lock, Percent
+  Wallet, TrendingUp, PieChart, Target, ShoppingCart, RefreshCw, Settings, Save, Users, Trash2, Lock, Percent, Calculator
 } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { Card, Button, Input, Modal } from '../components/UI';
@@ -21,6 +21,9 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
       familyMembers: [], 
       budgetPlan: [] 
   });
+
+  // State for Multi-Currency Expense Calculation
+  const [expCalc, setExpCalc] = useState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
 
   useEffect(() => {
     const unsub = cloudDb.subscribe(COLLS.PERSONAL, (data) => {
@@ -74,14 +77,16 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
 
   // --- CALCULATION LOGIC ---
   const jars = useMemo(() => {
+      // Income is considered in EGP for Budget Allocation
       const totalIncome = transactions
-        .filter(t => t.type === 'INCOME' && t.currency === 'EGP')
+        .filter(t => t.type === 'INCOME')
         .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
       return (config.budgetPlan || []).map((plan: any) => {
           const allocated = totalIncome * ((Number(plan.percentage) || 0) / 100);
+          // Expenses are deducted based on their EGP equivalent (amount field)
           const spent = transactions
-            .filter(t => t.type === 'EXPENSE' && t.category === plan.category && t.currency === 'EGP')
+            .filter(t => t.type === 'EXPENSE' && t.category === plan.category)
             .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
           
           return {
@@ -99,8 +104,9 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
       (config.familyMembers || []).forEach((m: string) => { stats[m] = 0; });
       stats['Unassigned'] = 0;
 
-      transactions.filter(t => t.type === 'EXPENSE' && t.currency === 'EGP').forEach(t => {
+      transactions.filter(t => t.type === 'EXPENSE').forEach(t => {
           const member = t.beneficiary || 'Unassigned';
+          // Use EGP amount for stats
           stats[member] = (stats[member] || 0) + (Number(t.amount) || 0);
       });
 
@@ -110,12 +116,26 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
   const wallets = useMemo(() => {
     const bals = { EGP: 0, SDG: 0, USD: 0 };
     transactions.forEach((t: any) => {
-      const amt = Number(t.amount) || 0;
-      if (t.type === 'INCOME') bals[t.currency as keyof typeof bals] += amt;
-      if (t.type === 'EXPENSE') bals[t.currency as keyof typeof bals] -= amt;
+      // Use the actual currency recorded
+      const curr = t.currency || 'EGP';
+      // Use foreign amount if available, otherwise EGP amount
+      const amt = t.currencyAmount || t.amount || 0; 
+
+      if (t.type === 'INCOME') {
+          bals[curr as keyof typeof bals] += amt;
+      }
+      if (t.type === 'EXPENSE') {
+          bals[curr as keyof typeof bals] -= amt;
+      }
       if (t.type === 'EXCHANGE') {
-        bals[t.currency as keyof typeof bals] -= amt;
-        bals[t.toCurrency as keyof typeof bals] += (amt * (Number(t.exchangeRate) || 1));
+        // Source currency deduction
+        bals[curr as keyof typeof bals] -= amt;
+        // Target currency addition (Exchange logic is simpler here, usually EGP out -> USD in or vice versa)
+        // Note: The exchange transaction structure might need to be robust for personal wallet exchanges if implemented fully.
+        if (t.toCurrency && t.exchangeRate) {
+             const targetAmt = amt * t.exchangeRate; // Simplified for internal transfers if needed
+             bals[t.toCurrency as keyof typeof bals] += targetAmt;
+        }
       }
     });
     return bals;
@@ -160,23 +180,67 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
   const handleAddTx = async (e: any) => {
       e.preventDefault();
       const fd = new FormData(e.currentTarget);
+      
       const data: any = {
           docType: 'TRANSACTION',
           type: modal.txType,
-          amount: Number(fd.get('amount')),
-          currency: fd.get('currency'),
           date: fd.get('date') || today,
           category: fd.get('category'),
           beneficiary: fd.get('beneficiary') || null,
           description: fd.get('desc')
       };
-      if (modal.txType === 'EXCHANGE') {
+
+      if (modal.txType === 'EXPENSE' || modal.txType === 'INCOME') {
+          // If Multi-Currency Logic is active
+          if (expCalc.currency !== 'EGP') {
+              data.amount = expCalc.egpAmount; // Bookkeeping in EGP
+              data.currency = expCalc.currency; // Actual wallet currency
+              data.currencyAmount = expCalc.foreignAmount; // Actual wallet deduction
+              data.exchangeRate = expCalc.rate;
+          } else {
+              data.amount = Number(fd.get('amount'));
+              data.currency = 'EGP';
+              data.currencyAmount = data.amount;
+              data.exchangeRate = 1;
+          }
+      } else if (modal.txType === 'EXCHANGE') {
+        data.amount = Number(fd.get('amount')); // Source Amount
+        data.currency = fd.get('currency');
         data.toCurrency = fd.get('toCurrency');
         data.exchangeRate = Number(fd.get('rate'));
         data.description = `تحويل عملة`;
       }
+
       await cloudDb.add(COLLS.PERSONAL, data);
       setModal(null);
+      setExpCalc({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
+  };
+
+  // --- CALCULATION HANDLERS FOR EXPENSE ---
+  const handleExpCurrencyChange = (curr: string) => {
+      setExpCalc(prev => ({ ...prev, currency: curr, rate: 0, foreignAmount: 0, egpAmount: 0 }));
+  };
+
+  const handleExpForeignChange = (val: number) => {
+      setExpCalc(prev => {
+          let newEgp = 0;
+          if (prev.rate > 0) {
+              if (prev.currency === 'SDG') newEgp = val / prev.rate;
+              else newEgp = val * prev.rate;
+          }
+          return { ...prev, foreignAmount: val, egpAmount: parseFloat(newEgp.toFixed(2)) };
+      });
+  };
+
+  const handleExpRateChange = (val: number) => {
+      setExpCalc(prev => {
+          let newEgp = 0;
+          if (val > 0) {
+              if (prev.currency === 'SDG') newEgp = prev.foreignAmount / val;
+              else newEgp = prev.foreignAmount * val;
+          }
+          return { ...prev, rate: val, egpAmount: parseFloat(newEgp.toFixed(2)) };
+      });
   };
 
   return (
@@ -210,8 +274,8 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
 
        {/* Quick Actions */}
        <div className="flex gap-2 overflow-x-auto custom-scrollbar">
-          <Button onClick={() => setModal({ type: 'TX_FORM', txType: 'EXPENSE' })} className="flex-1 min-w-[100px] !h-12 !text-xs !rounded-xl bg-red-500/10 text-red-400 border-red-500/20"><ShoppingCart size={16}/> مصروف</Button>
-          <Button onClick={() => setModal({ type: 'TX_FORM', txType: 'INCOME' })} className="flex-1 min-w-[100px] !h-12 !text-xs !rounded-xl bg-emerald-500/10 text-emerald-400 border-emerald-500/20"><TrendingUp size={16}/> دخل</Button>
+          <Button onClick={() => { setModal({ type: 'TX_FORM', txType: 'EXPENSE' }); setExpCalc({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 }); }} className="flex-1 min-w-[100px] !h-12 !text-xs !rounded-xl bg-red-500/10 text-red-400 border-red-500/20"><ShoppingCart size={16}/> مصروف</Button>
+          <Button onClick={() => { setModal({ type: 'TX_FORM', txType: 'INCOME' }); setExpCalc({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 }); }} className="flex-1 min-w-[100px] !h-12 !text-xs !rounded-xl bg-emerald-500/10 text-emerald-400 border-emerald-500/20"><TrendingUp size={16}/> دخل</Button>
           <Button onClick={() => setModal({ type: 'TX_FORM', txType: 'EXCHANGE' })} className="flex-1 min-w-[100px] !h-12 !text-xs !rounded-xl bg-blue-500/10 text-blue-400 border-blue-500/20"><RefreshCw size={16}/> تحويل</Button>
        </div>
 
@@ -288,7 +352,7 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
                               <p className="text-[10px] text-slate-500 mt-1">{t.date} • {t.description}</p>
                           </div>
                           <span className={`font-black ${t.type === 'INCOME' ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {t.type === 'INCOME' ? '+' : '-'}{formatCurrency(t.amount)} <span className="text-[9px]">{t.currency}</span>
+                              {t.type === 'INCOME' ? '+' : '-'}{formatCurrency(t.currencyAmount || t.amount)} <span className="text-[9px]">{t.currency || 'EGP'}</span>
                           </span>
                       </div>
                   ))}
@@ -360,18 +424,69 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
       {modal?.type === 'TX_FORM' && (
         <Modal title={modal.txType === 'INCOME' ? 'تسجيل دخل' : modal.txType === 'EXPENSE' ? 'تسجيل مصروف' : 'تحويل عملة'} onClose={() => setModal(null)}>
            <form onSubmit={handleAddTx} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                 <Input label="المبلغ" name="amount" type="number" required />
-                 <div className="space-y-2">
-                    <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">العملة</label>
-                    <select name="currency" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none" required>
-                       {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-                    </select>
-                 </div>
-              </div>
               
-              {modal.txType === 'EXCHANGE' ? (
+              {/* Currency Selection for Expense/Income */}
+              {(modal.txType === 'EXPENSE' || modal.txType === 'INCOME') && (
+                  <div className="bg-slate-950 p-3 rounded-2xl border border-white/5">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2 px-2">عملة العملية</label>
+                      <div className="flex gap-2">
+                          {CURRENCIES.map(c => (
+                              <button 
+                                  key={c.code} 
+                                  type="button" 
+                                  onClick={() => handleExpCurrencyChange(c.code)}
+                                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${expCalc.currency === c.code ? 'bg-brand-500 text-white' : 'bg-slate-900 text-slate-500'}`}
+                              >
+                                  {c.code}
+                              </button>
+                          ))}
+                      </div>
+                  </div>
+              )}
+
+              {/* Amount Inputs */}
+              {(modal.txType === 'EXPENSE' || modal.txType === 'INCOME') && expCalc.currency !== 'EGP' ? (
+                  <div className="p-4 bg-brand-500/5 border border-brand-500/20 rounded-2xl animate-slide-up grid grid-cols-2 gap-4">
+                      <div className="col-span-2 flex items-center gap-2 text-brand-400 mb-1">
+                          <Calculator size={16}/> <span className="text-xs font-bold">حاسبة العملة ({expCalc.currency})</span>
+                      </div>
+                      
+                      <Input 
+                        label={`المبلغ بالـ ${expCalc.currency}`} 
+                        type="number" 
+                        value={expCalc.foreignAmount || ''}
+                        onChange={(e:any) => handleExpForeignChange(Number(e.target.value))} 
+                        placeholder="0.00" 
+                      />
+                      <Input 
+                        label={expCalc.currency === 'SDG' ? `سعر التحويل (كم ${expCalc.currency} = 1 جنيه)` : `سعر التحويل (1 ${expCalc.currency} = كم جنيه)`}
+                        type="number" 
+                        value={expCalc.rate || ''}
+                        placeholder="مثلاً 55" 
+                        onChange={(e:any) => handleExpRateChange(Number(e.target.value))}
+                      />
+                      <div className="col-span-2 text-center">
+                          <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">القيمة المعادلة بالمصري (للخصم من الميزانية)</p>
+                          <p className="text-xl font-black text-white">{formatCurrency(expCalc.egpAmount)} EGP</p>
+                      </div>
+                  </div>
+              ) : (modal.txType === 'EXPENSE' || modal.txType === 'INCOME') ? (
+                  <Input label="المبلغ (EGP)" name="amount" type="number" required />
+              ) : null}
+
+              
+              {/* Exchange Mode Inputs */}
+              {modal.txType === 'EXCHANGE' && (
                  <>
+                   <div className="grid grid-cols-2 gap-4">
+                        <Input label="المبلغ المراد تحويله" name="amount" type="number" required />
+                        <div className="space-y-2">
+                            <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">من عملة</label>
+                            <select name="currency" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none" required>
+                                {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+                            </select>
+                        </div>
+                   </div>
                    <div className="space-y-2">
                       <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">إلى عملة</label>
                       <select name="toCurrency" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none" required>
@@ -380,7 +495,9 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
                    </div>
                    <Input label="سعر التحويل (Rate)" name="rate" type="number" step="0.01" placeholder="مثلاً 50.5" required />
                  </>
-              ) : (
+              )}
+
+              {(modal.txType === 'EXPENSE' || modal.txType === 'INCOME') && (
                  <>
                     <div className="space-y-2">
                         <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">البند / التصنيف</label>

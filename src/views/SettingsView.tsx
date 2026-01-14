@@ -1,26 +1,43 @@
 
 import React, { useState } from 'react';
-import { Users, Key, Edit, UserPlus, RotateCcw, BarChart3, AlertTriangle } from 'lucide-react';
+import { Users, Key, Edit, UserPlus, RotateCcw, BarChart3, AlertTriangle, Palette, Check } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { UserRole, BookingStatus } from '../types';
-import { Button, Input, Modal, Card } from '../components/UI';
+import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
 import { PERMISSIONS_LIST } from '../utils/constants';
 import { today } from '../utils/helpers';
 
-export default function SettingsView({ user, users, bookings, sales, finance, dresses, hasPerm, showToast, addLog }: any) {
+export default function SettingsView({ user, users, bookings, sales, finance, dresses, hasPerm, showToast, addLog, onThemeChange }: any) {
   const [modal, setModal] = useState<any>(null);
+  const [currentTheme, setCurrentTheme] = useState(localStorage.getItem('app_theme') || 'default');
+
+  const handleThemeSwitch = (theme: string) => {
+    localStorage.setItem('app_theme', theme);
+    setCurrentTheme(theme);
+    
+    // Notify the rest of the app immediately
+    window.dispatchEvent(new Event('theme-change'));
+    
+    if (onThemeChange) onThemeChange(theme);
+    showToast(`تم تغيير المظهر إلى ${theme === 'warm_gold' ? 'الذهبي الفاخر' : 'الافتراضي'}`);
+  };
 
   const handleResetAll = async () => {
-    if (confirm('تحذير أمان قصوى: سيتم مسح كافة سجلات السحابة بالكامل والعودة لنقطة الصفر. هذا الإجراء لا يمكن التراجع عنه. استمرار؟')) {
-       await cloudDb.clearAll();
-       showToast('تم تصفير النظام بنجاح تام');
-       setTimeout(() => window.location.reload(), 1200);
-    }
+    setModal({ type: 'CONFIRM_RESET' });
+  };
+
+  const executeResetAll = async () => {
+     await cloudDb.clearAll();
+     showToast('تم تصفير النظام بنجاح تام');
+     setModal(null);
+     setTimeout(() => window.location.reload(), 1200);
   };
 
   const handleFixFinance = async () => {
-    if(!confirm('سيتم مراجعة جميع الحجوزات وطلبات البيع وإضافة السجلات المالية المفقودة للعربون. هل أنت متأكد؟')) return;
-    
+    setModal({ type: 'CONFIRM_FIX' });
+  };
+
+  const executeFixFinance = async () => {
     let count = 0;
     const financeIds = new Set(finance.map((f:any) => f.relatedId).filter(Boolean));
 
@@ -56,10 +73,14 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
     
     showToast(`تم إضافة ${count} سجل مالي مفقود`);
     addLog('تصحيح مالي', `تم تشغيل التصحيح التلقائي وإضافة ${count} سجل`);
+    setModal(null);
   };
 
   const handleRecalculateCounts = async () => {
-    if (!confirm('سيتم إعادة حساب عدد مرات الإيجار لكل فستان بناءً على الحجوزات المسجلة. هل أنت متأكد؟')) return;
+    setModal({ type: 'CONFIRM_RECALC' });
+  };
+
+  const executeRecalculateCounts = async () => {
     let updatedCount = 0;
     for (const d of dresses) {
         const realCount = bookings.filter((b: any) => b.dressId === d.id && b.status !== BookingStatus.CANCELLED).length;
@@ -70,6 +91,7 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
     }
     showToast(`تم تحديث عداد ${updatedCount} فستان`);
     addLog('صيانة', `إعادة احتساب عدادات الإيجار. تم تحديث ${updatedCount} سجل.`);
+    setModal(null);
   };
 
   return (
@@ -82,6 +104,40 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
           <p className="text-brand-500 font-black mt-3 tracking-[0.4em] uppercase text-xs">@{user.username} • {user.role}</p>
           <Button variant="ghost" onClick={() => setModal({ type: 'CHANGE_PASS' })} className="mx-auto mt-10 !rounded-2xl px-10 h-14 border-white/10 italic"><Key size={18}/> تغيير كلمة المرور</Button>
        </div>
+
+       {/* THEME SWITCHER */}
+       <Card>
+          <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2"><Palette size={20}/> مظهر التطبيق (App Theme)</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             <button 
+               onClick={() => handleThemeSwitch('default')}
+               className={`p-6 rounded-2xl border-2 transition-all flex items-center justify-between group relative overflow-hidden ${currentTheme === 'default' ? 'border-brand-500 bg-brand-500/10' : 'border-white/5 bg-slate-900/50 hover:bg-slate-900'}`}
+             >
+                <div className="flex items-center gap-4 z-10">
+                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-fuchsia-500 to-purple-700 shadow-lg"></div>
+                   <div className="text-right">
+                      <p className="font-black text-white">الافتراضي (أزرق/بارد)</p>
+                      <p className="text-[10px] text-slate-400 font-bold">Original Cool Vibes</p>
+                   </div>
+                </div>
+                {currentTheme === 'default' && <div className="w-8 h-8 bg-brand-500 rounded-full flex items-center justify-center text-white"><Check size={16}/></div>}
+             </button>
+
+             <button 
+               onClick={() => handleThemeSwitch('warm_gold')}
+               className={`p-6 rounded-2xl border-2 transition-all flex items-center justify-between group relative overflow-hidden ${currentTheme === 'warm_gold' ? 'border-[#D4AF37] bg-[#D4AF37]/10' : 'border-white/5 bg-slate-900/50 hover:bg-slate-900'}`}
+             >
+                <div className="flex items-center gap-4 z-10">
+                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#D4AF37] to-[#8a6d1c] shadow-lg border border-[#F5EFE0]/20"></div>
+                   <div className="text-right">
+                      <p className="font-black text-white">الملكي (ذهبي/دافئ)</p>
+                      <p className="text-[10px] text-slate-400 font-bold">Luxury Warm Gold</p>
+                   </div>
+                </div>
+                {currentTheme === 'warm_gold' && <div className="w-8 h-8 bg-[#D4AF37] rounded-full flex items-center justify-center text-white"><Check size={16}/></div>}
+             </button>
+          </div>
+       </Card>
 
        {hasPerm('admin_reset') && (
          <div className="space-y-10">
@@ -120,6 +176,41 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
                <Button variant="danger" onClick={handleResetAll} className="w-full h-18 text-lg font-black !rounded-[2.5rem]">تصفير النظام بالكامل</Button>
             </div>
          </div>
+       )}
+
+       {/* CONFIRMATION MODALS */}
+       {modal?.type === 'CONFIRM_RESET' && (
+         <ConfirmModal 
+           title="تصفير النظام"
+           msg="تحذير أمان قصوى: سيتم مسح كافة سجلات السحابة بالكامل والعودة لنقطة الصفر. هذا الإجراء لا يمكن التراجع عنه. استمرار؟"
+           onConfirm={executeResetAll}
+           onCancel={() => setModal(null)}
+           confirmText="نعم، دمر البيانات"
+         />
+       )}
+
+       {modal?.type === 'CONFIRM_FIX' && (
+         <ConfirmModal 
+           title="تصحيح مالي"
+           msg="سيتم مراجعة جميع الحجوزات وطلبات البيع وإضافة السجلات المالية المفقودة للعربون. هل أنت متأكد؟"
+           onConfirm={executeFixFinance}
+           onCancel={() => setModal(null)}
+           confirmText="بدء الفحص والتصحيح"
+           variant="primary"
+           icon={RotateCcw}
+         />
+       )}
+
+       {modal?.type === 'CONFIRM_RECALC' && (
+         <ConfirmModal 
+           title="تحديث العدادات"
+           msg="سيتم إعادة حساب عدد مرات الإيجار لكل فستان بناءً على الحجوزات المسجلة. هل أنت متأكد؟"
+           onConfirm={executeRecalculateCounts}
+           onCancel={() => setModal(null)}
+           confirmText="تحديث الآن"
+           variant="primary"
+           icon={BarChart3}
+         />
        )}
        
        {(modal?.type === 'ADD_USER' || modal?.type === 'EDIT_USER') && (

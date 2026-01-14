@@ -1,8 +1,9 @@
+
 import React, { useState, useRef, useMemo } from 'react';
-import { Plus, Camera, Shirt, Calendar, Droplets, Edit, Trash2, Check, AlertTriangle } from 'lucide-react';
+import { Plus, Camera, Shirt, Calendar, Droplets, Edit, Trash2, Check, AlertTriangle, RotateCcw } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { DressStatus, DressType, DressCondition, BookingStatus } from '../types';
-import { Button, Input, Modal, Card } from '../components/UI';
+import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
 import { today, formatCurrency } from '../utils/helpers';
 import { PAYMENT_METHODS } from '../utils/constants';
 
@@ -52,6 +53,22 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
      setPendingSave(null);
   };
 
+  const handleRestore = (d: any) => {
+      setModal({ type: 'CONFIRM_RESTORE', item: d });
+  };
+
+  const executeRestore = async (d: any) => {
+      await cloudDb.update(COLLS.DRESSES, d.id, { status: DressStatus.AVAILABLE });
+      showToast('تم استرجاع الفستان لقائمة المتاح');
+      setModal(null);
+  };
+
+  const handleDeleteFinal = async (id: string) => {
+      await cloudDb.delete(COLLS.DRESSES, id);
+      showToast('تم حذف الفستان نهائياً');
+      setModal(null);
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="flex bg-slate-900/60 p-1.5 rounded-2xl border border-white/5 sticky top-0 z-50 backdrop-blur-xl shadow-lg">
@@ -97,7 +114,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
                 {subTab === 'available' ? (
                   <Button variant="danger" onClick={() => setModal({ type: 'DELETE_OPT', item: d })} className="!w-12 !h-12 !p-0"><Trash2 size={18}/></Button>
                 ) : (
-                  <Button variant="success" onClick={() => { if(confirm('استرجاع الفستان لمتاح؟')) { cloudDb.update(COLLS.DRESSES, d.id, { status: DressStatus.AVAILABLE }); showToast('تم الاسترجاع'); } }} className="!w-12 !h-12 !p-0"><Check size={18}/></Button>
+                  <Button variant="success" onClick={() => handleRestore(d)} className="!w-12 !h-12 !p-0"><RotateCcw size={18}/></Button>
                 )}
               </div>
             </Card>
@@ -260,10 +277,33 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
         </Modal>
       )}
       
+      {/* CONFIRM DELETE/RESTORE MODALS */}
+      {modal?.type === 'CONFIRM_DELETE_FINAL' && (
+        <ConfirmModal 
+          title="حذف نهائي"
+          msg={`هل أنت متأكد من حذف فستان "${modal.item.name}" نهائياً من السجلات؟`}
+          onConfirm={() => handleDeleteFinal(modal.item.id)}
+          onCancel={() => setModal(null)}
+          confirmText="نعم، حذف"
+        />
+      )}
+
+      {modal?.type === 'CONFIRM_RESTORE' && (
+        <ConfirmModal 
+          title="استرجاع الفستان"
+          msg={`هل تريد استرجاع فستان "${modal.item.name}" إلى قائمة المتاح؟`}
+          onConfirm={() => executeRestore(modal.item)}
+          onCancel={() => setModal(null)}
+          confirmText="نعم، استرجاع"
+          variant="success"
+          icon={RotateCcw}
+        />
+      )}
+      
       {modal?.type === 'DELETE_OPT' && (
         <Modal title="خيارات الفستان" onClose={() => setModal(null)}>
           <div className="grid gap-4">
-            <Button variant="danger" onClick={() => { if(confirm('حذف نهائي؟')) { cloudDb.delete(COLLS.DRESSES, modal.item.id); setModal(null); showToast('تم الحذف'); } }} className="h-20 text-lg !rounded-3xl">حذف نهائي</Button>
+            <Button variant="danger" onClick={() => setModal({ type: 'CONFIRM_DELETE_FINAL', item: modal.item })} className="h-20 text-lg !rounded-3xl">حذف نهائي</Button>
             <Button variant="ghost" onClick={() => { cloudDb.update(COLLS.DRESSES, modal.item.id, { status: DressStatus.ARCHIVED }); setModal(null); showToast('تم الأرشفة'); }} className="h-20 text-lg !rounded-3xl">نقل للأرشيف</Button>
             <Button variant="success" onClick={() => setModal({ type: 'SELL_NOW', item: modal.item })} className="h-20 text-lg !rounded-3xl">بيع الفستان للعروس</Button>
           </div>

@@ -1,8 +1,9 @@
+
 // src/components/UI.tsx
 import React from 'react';
 import { 
   Home, Shirt, Calendar, ShoppingBag, Factory, Truck, Users, DollarSign, FileText, Settings, 
-  X, Camera 
+  X, Camera, AlertTriangle, CheckCircle, Info
 } from 'lucide-react';
 
 export function IconByName({ name, ...props }: any) {
@@ -14,7 +15,7 @@ export function IconByName({ name, ...props }: any) {
 export function Modal({ title, children, onClose, size = 'md' }: any) {
   return (
     <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center bg-slate-950/80 backdrop-blur-sm animate-fade-in no-print p-4">
-      <div className={`bg-slate-900 border border-white/5 rounded-[2.5rem] w-full ${size === 'lg' ? 'max-w-4xl' : 'max-w-xl'} shadow-2xl relative animate-slide-up flex flex-col max-h-[90vh]`}>
+      <div className={`bg-slate-900 border border-white/5 rounded-[2.5rem] w-full ${size === 'lg' ? 'max-w-4xl' : size === 'sm' ? 'max-w-md' : 'max-w-xl'} shadow-2xl relative animate-slide-up flex flex-col max-h-[90vh]`}>
         <div className="flex justify-between items-center px-8 py-6 border-b border-white/5 shrink-0">
           <h2 className="text-xl font-black text-white tracking-tight">{title}</h2>
           <button onClick={onClose} className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-full hover:bg-white/10 transition-colors"><X size={20}/></button>
@@ -22,6 +23,23 @@ export function Modal({ title, children, onClose, size = 'md' }: any) {
         <div className="flex-1 overflow-y-auto custom-scrollbar p-8">{children}</div>
       </div>
     </div>
+  );
+}
+
+export function ConfirmModal({ title, msg, onConfirm, onCancel, confirmText = "نعم، متأكد", cancelText = "إلغاء", icon: Icon = AlertTriangle, variant = "danger" }: any) {
+  return (
+    <Modal title={title} onClose={onCancel} size="sm">
+      <div className="text-center space-y-6">
+        <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto ${variant === 'danger' ? 'bg-red-500/10 text-red-500 border border-red-500/20' : variant === 'success' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-blue-500/10 text-blue-500 border border-blue-500/20'}`}>
+          <Icon size={40} />
+        </div>
+        <p className="text-white font-bold text-lg leading-relaxed">{msg}</p>
+        <div className="grid grid-cols-2 gap-4 pt-2">
+          <Button variant="ghost" onClick={onCancel} className="!rounded-xl">{cancelText}</Button>
+          <Button variant={variant} onClick={onConfirm} className="!rounded-xl">{confirmText}</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

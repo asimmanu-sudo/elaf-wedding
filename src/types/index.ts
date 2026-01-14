@@ -7,7 +7,7 @@ export enum DepositType { CASH = 'مبلغ مالي', DOCUMENT = 'مستند', G
 export enum SaleStatus { DESIGNING = 'قيد التصميم', READY = 'جاهز للاستلام', DELIVERED = 'تم التسليم للعروس', CANCELLED = 'ملغي' }
 export enum FactoryPaymentStatus { UNPAID = 'غير مدفوع', PARTIAL = 'مدفوع جزئياً', PAID = 'خالص' }
 export enum DressCondition { NEW = 'جديد (أول لبسة)', USED = 'مستعمل' }
-export enum PaymentMethod { CASH_EGP = 'كاش (جنيه)', BANK_EGP = 'تحويل بنكي' }
+export enum PaymentMethod { CASH_EGP = 'كاش (جنيه)', BANK_EGP = 'تحويل بنكي', BANKAK_SDG = 'بنكك (سوداني)', CASH_USD = 'كاش (دولار)', WU = 'Western Union' }
 
 export interface User {
   id: string;
@@ -67,6 +67,10 @@ export interface SaleOrder {
   otherPaymentMethod?: string;
   actualDeliveryDate?: string;
   staffName?: string;
+  // Multi-currency fields
+  exchangeRate?: number;
+  foreignAmount?: number;
+  originalCurrency?: string;
 }
 
 export interface Booking {
@@ -101,6 +105,10 @@ export interface Booking {
   createdAt: string;
   paymentMethod?: string;
   otherPaymentMethod?: string;
+  // Multi-currency fields
+  exchangeRate?: number;
+  foreignAmount?: number;
+  originalCurrency?: string;
 }
 
 export interface Customer {
@@ -114,14 +122,18 @@ export interface Customer {
 export interface FinanceRecord {
   id: string;
   date: string;
-  type: 'INCOME' | 'EXPENSE';
+  type: 'INCOME' | 'EXPENSE' | 'EXCHANGE_IN' | 'EXCHANGE_OUT';
   category: string;
   subCategory?: string;
-  amount: number;
+  amount: number; // The value in EGP (for accounting reports)
+  currency?: 'EGP' | 'USD' | 'SDG'; // The actual currency stored in wallet
+  currencyAmount?: number; // The actual amount in that currency (same as foreignAmount)
+  exchangeRate?: number; // Rate used at time of transaction
   notes: string;
   relatedDresses?: string[];
   targetUser?: string;
   relatedId?: string;
+  isFuture?: boolean;
 }
 
 export interface AuditLog {
@@ -144,7 +156,7 @@ export interface PersonalTransaction {
   currency: CurrencyCode;
   date: string;
   description: string;
-  beneficiary?: string; // Who spent this money (Family Member)
+  beneficiary?: string; 
   targetGoalId?: string; 
   exchangeRate?: number;
   toCurrency?: CurrencyCode;

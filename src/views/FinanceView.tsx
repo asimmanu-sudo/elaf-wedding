@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Filter, Plus, CalendarDays, Clock, TrendingUp, ArrowDownCircle, DollarSign, Shirt, LogOut } from 'lucide-react';
+import { Filter, Plus, CalendarDays, Clock, TrendingUp, ArrowDownCircle, DollarSign, LogOut, ArrowLeftRight, Wallet } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { DressType, DressStatus, BookingStatus, SaleStatus } from '../types';
 import { Button, Input, Modal, Card } from '../components/UI';
@@ -12,24 +12,28 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
   const [modal, setModal] = useState<any>(null);
   const [showFilters, setShowFilters] = useState(false);
   
-  const [sysConfig, setSysConfig] = useState<any>({ rentOpsFee: DEFAULT_RENT_OPS_FEE, staffRatio: DEFAULT_STAFF_RATIO });
-  
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
 
-  useEffect(() => {
-    const unsub = cloudDb.subscribe(COLLS.PERSONAL, (data) => {
-       const config = data.find((d:any) => d.docType === 'UNIFIED_CONFIG');
-       if(config) {
-         setSysConfig({ 
-           rentOpsFee: Number(config.rentOpsFee), 
-           staffRatio: Number(config.staffRatio) 
-         });
-       }
-    });
-    return () => unsub();
-  }, []);
+  // WALLET CALCULATION
+  const wallets = useMemo(() => {
+      const bals = { EGP: 0, SDG: 0, USD: 0 };
+      finance.forEach((f: any) => {
+          if (f.isFuture) return;
+          // Use stored currency or default to EGP
+          const curr = f.currency || 'EGP';
+          // Use stored currencyAmount or fallback to amount (EGP) if EGP
+          const amt = f.currencyAmount || f.amount || 0;
+
+          if (f.type === 'INCOME' || f.type === 'EXCHANGE_IN') {
+              bals[curr as keyof typeof bals] += amt;
+          } else if (f.type === 'EXPENSE' || f.type === 'EXCHANGE_OUT') {
+              bals[curr as keyof typeof bals] -= amt;
+          }
+      });
+      return bals;
+  }, [finance]);
 
   const activeBookings = useMemo(() => bookings.filter((b: any) => 
     b.status === BookingStatus.PENDING || b.status === BookingStatus.ACTIVE
@@ -63,6 +67,7 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
     }).sort((a: any, b: any) => b.date.localeCompare(a.date));
   }, [finance, query, startDate, endDate, selectedCats, futureRentals, futureSales]);
 
+  // ACCOUNTING TOTALS (Always based on EGP 'amount' field)
   const totals = useMemo(() => {
     const actuals = filteredFinance.filter((f: any) => !f.isFuture);
     const inc = actuals.filter((f: any) => f.type === 'INCOME').reduce((s: any, f: any) => s + f.amount, 0);
@@ -75,18 +80,17 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
     const fd = new FormData(e.currentTarget);
     const amount = Number(fd.get('amount'));
     
-    // Logic for available funds moved to LifeBudgetView generally, but simple check here
-    const allInc = finance.filter((f:any) => f.type === 'INCOME').reduce((s:any,f:any)=>s+f.amount, 0);
-    const allExp = finance.filter((f:any) => f.type === 'EXPENSE').reduce((s:any,f:any)=>s+f.amount, 0);
-    const cashInHand = allInc - allExp;
+    // STRICT RULE: Can only withdraw from LIQUID EGP CASH
+    const liquidEGP = wallets.EGP;
 
-    if (amount > cashInHand) {
-        showToast('رصيد الخزنة الفعلي لا يكفي', 'warning');
+    if (amount > liquidEGP) {
+        showToast(`رصيد الكاش المصري غير كافٍ. المتاح: ${formatCurrency(liquidEGP)}`, 'error');
         return;
     }
 
     await cloudDb.add(COLLS.FINANCE, {
        amount, type: 'EXPENSE', category: 'سحب للمنزل (مسحوبات مالك)', 
+       currency: 'EGP', currencyAmount: amount,
        notes: fd.get('notes') || 'سحب شخصي', date: today
     });
 
@@ -97,6 +101,40 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
 
     showToast('تم السحب وتسجيله في ميزانية البيت');
     setModal(null);
+  };
+
+  const handleExchange = async (e: any) => {
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      const fromCurr = fd.get('from_curr');
+      const toCurr = fd.get('to_curr');
+      const sellAmt = Number(fd.get('sell_amt'));
+      const buyAmt = Number(fd.get('buy_amt'));
+
+      if (wallets[fromCurr as keyof typeof wallets] < sellAmt) {
+          showToast('رصيد المحفظة لا يكفي', 'error');
+          return;
+      }
+
+      // Record 1: OUT (Sell)
+      // Note: amount=0 for Profit/Loss calc to avoid double counting, unless we track exchange P&L specifically. 
+      // Simplified: Just move cash. Bookkeeping for P&L is separate.
+      await cloudDb.add(COLLS.FINANCE, {
+          type: 'EXCHANGE_OUT', category: 'تحويل عملة (صادر)',
+          amount: 0, // No impact on EGP P&L
+          currency: fromCurr, currencyAmount: sellAmt,
+          notes: `بيع ${sellAmt} ${fromCurr}`, date: today
+      });
+
+      // Record 2: IN (Buy)
+      await cloudDb.add(COLLS.FINANCE, {
+          type: 'EXCHANGE_IN', category: 'تحويل عملة (وارد)',
+          amount: 0, // No impact on EGP P&L
+          currency: toCurr, currencyAmount: buyAmt,
+          notes: `شراء ${buyAmt} ${toCurr} (مقابل ${sellAmt} ${fromCurr})`, date: today
+      });
+
+      showToast('تم التحويل بنجاح'); setModal(null);
   };
 
   const performance = useMemo(() => {
@@ -117,7 +155,7 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
       const incMap: Record<string, number> = {};
       filteredFinance.filter((f:any) => !f.isFuture).forEach((f: any) => {
           if (f.type === 'EXPENSE') expMap[f.category] = (expMap[f.category] || 0) + f.amount;
-          else incMap[f.category] = (incMap[f.category] || 0) + f.amount;
+          else if (f.type === 'INCOME') incMap[f.category] = (incMap[f.category] || 0) + f.amount;
       });
       return {
           expenses: Object.entries(expMap).map(([k, v]) => ({ name: k, value: v })).sort((a,b)=>b.value-a.value),
@@ -129,8 +167,20 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const type = fd.get('t') as 'INCOME' | 'EXPENSE';
-    const amount = Math.abs(Number(fd.get('a')));
-    const data: any = { date: fd.get('d') || today, type, amount, category: fd.get('c'), notes: fd.get('n') || '' };
+    const amount = Math.abs(Number(fd.get('a'))); // EGP Value
+    const currency = fd.get('curr') || 'EGP';
+    const currencyAmount = currency === 'EGP' ? amount : Math.abs(Number(fd.get('curr_amt')));
+
+    const data: any = { 
+        date: fd.get('d') || today, 
+        type, 
+        amount, 
+        currency,
+        currencyAmount,
+        category: fd.get('c'), 
+        notes: fd.get('n') || '' 
+    };
+
     if (type === 'EXPENSE') {
       if (data.category === 'رواتب') data.targetUser = fd.get('tu');
       if (['تنظيف', 'ترزي'].includes(data.category)) {
@@ -155,6 +205,25 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
         ))}
       </div>
 
+      {/* WALLETS SECTION */}
+      <div className="grid grid-cols-3 gap-3">
+         <div className="bg-slate-950 p-4 rounded-3xl border border-white/5 relative overflow-hidden">
+             <div className="absolute top-0 left-0 w-full h-1 bg-brand-500"></div>
+             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">EGP (كاش)</p>
+             <p className="text-xl font-black text-white" dir="ltr">{formatCurrency(wallets.EGP)}</p>
+         </div>
+         <div className="bg-slate-950 p-4 rounded-3xl border border-white/5 relative overflow-hidden">
+             <div className="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
+             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">SDG (بنكك)</p>
+             <p className="text-xl font-black text-white" dir="ltr">{formatCurrency(wallets.SDG)}</p>
+         </div>
+         <div className="bg-slate-950 p-4 rounded-3xl border border-white/5 relative overflow-hidden">
+             <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>
+             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">USD (دولار)</p>
+             <p className="text-xl font-black text-white" dir="ltr">{new Intl.NumberFormat('en-US').format(wallets.USD)}</p>
+         </div>
+      </div>
+
       <div className="flex gap-4 flex-wrap">
         <Button variant="ghost" className="flex-1 h-12" onClick={() => setShowFilters(!showFilters)}>
            <Filter size={18} /> {showFilters ? 'إخفاء الفلاتر' : 'تصفية النتائج'}
@@ -162,6 +231,7 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
         {hasPerm('add_finance') && (
           <>
             <Button onClick={() => setModal({ type: 'ADD' })} className="flex-1 h-12"><Plus size={18}/> إضافة عملية</Button>
+            <Button onClick={() => setModal({ type: 'EXCHANGE' })} className="flex-1 h-12 bg-blue-500/10 text-blue-400 border-blue-500/20"><ArrowLeftRight size={18}/> تحويل عملة</Button>
             <Button onClick={() => setModal({ type: 'WITHDRAW' })} variant="danger" className="flex-1 h-12 bg-red-500/10 hover:bg-red-500 border-red-500/20 text-red-400"><LogOut size={18}/> سحب للمنزل</Button>
           </>
         )}
@@ -193,8 +263,8 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
            {filteredFinance.map((f: any) => (
              <Card key={f.id} className={`!py-4 flex items-center justify-between group ${(f as any).isFuture ? 'opacity-70 border-dashed border-blue-500/30' : ''}`}>
                <div className="flex items-center gap-4">
-                 <div className={`w-11 h-11 rounded-xl flex items-center justify-center border ${(f as any).isFuture ? 'bg-blue-500/10 border-blue-500/10 text-blue-500' : f.type === 'INCOME' ? 'bg-emerald-500/10 border-emerald-500/10 text-emerald-500' : 'bg-red-500/10 border-red-500/10 text-red-500'}`}>
-                     {(f as any).isFuture ? <Clock size={18}/> : f.type === 'INCOME' ? <TrendingUp size={18}/> : <ArrowDownCircle size={18}/>}
+                 <div className={`w-11 h-11 rounded-xl flex items-center justify-center border ${(f as any).isFuture ? 'bg-blue-500/10 border-blue-500/10 text-blue-500' : f.type === 'INCOME' || f.type === 'EXCHANGE_IN' ? 'bg-emerald-500/10 border-emerald-500/10 text-emerald-500' : 'bg-red-500/10 border-red-500/10 text-red-500'}`}>
+                     {(f as any).isFuture ? <Clock size={18}/> : f.type.includes('INCOME') || f.type.includes('IN') ? <TrendingUp size={18}/> : <ArrowDownCircle size={18}/>}
                  </div>
                  <div>
                      <h4 className="font-black text-sm text-white">{f.category}</h4>
@@ -202,8 +272,8 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
                  </div>
                </div>
                <div className="text-left flex flex-col items-end">
-                 <span className={`text-base font-black tracking-tighter ${(f as any).isFuture ? 'text-blue-400' : f.type === 'INCOME' ? 'text-emerald-400' : 'text-red-400'}`}>
-                     {f.type === 'INCOME' ? '+' : '-'}{formatCurrency(f.amount)}
+                 <span className={`text-base font-black tracking-tighter ${(f as any).isFuture ? 'text-blue-400' : f.type.includes('IN') ? 'text-emerald-400' : 'text-red-400'}`}>
+                     {f.type.includes('IN') ? '+' : '-'}{formatCurrency(f.currencyAmount || f.amount)} <span className="text-[9px] uppercase opacity-70">{f.currency || 'EGP'}</span>
                  </span>
                  {!((f as any).isFuture) && hasPerm('admin_reset') && (
                      <button onClick={async () => { if(confirm('حذف السجل المالي؟')) cloudDb.delete(COLLS.FINANCE, f.id); }} className="text-[9px] text-red-500/50 mt-1 hover:text-red-500 transition-colors">حذف</button>
@@ -239,7 +309,7 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
 
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
-                 <h3 className="text-sm font-black text-white mb-4">توزيع المصروفات</h3>
+                 <h3 className="text-sm font-black text-white mb-4">توزيع المصروفات (EGP Value)</h3>
                  <div className="space-y-3">
                     {analysis.expenses.map((item:any, idx: number) => (
                        <div key={idx} className="flex justify-between items-center text-xs">
@@ -255,7 +325,7 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
                  </div>
               </Card>
               <Card>
-                 <h3 className="text-sm font-black text-white mb-4">مصادر الدخل</h3>
+                 <h3 className="text-sm font-black text-white mb-4">مصادر الدخل (EGP Value)</h3>
                  <div className="space-y-3">
                     {analysis.income.map((item:any, idx: number) => (
                        <div key={idx} className="flex justify-between items-center text-xs">
@@ -307,15 +377,49 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
          <Modal title="سحب نقدي للمنزل" onClose={() => setModal(null)}>
             <form onSubmit={handleWithdraw} className="space-y-6">
                <div className="p-4 bg-brand-500/10 rounded-2xl border border-brand-500/20 text-center">
-                  <p className="text-[10px] text-brand-400 uppercase tracking-widest mb-1">إجمالي الخزينة (كاش)</p>
-                  <p className="text-2xl font-black text-white">{formatCurrency(totals.inc - totals.exp)}</p>
+                  <p className="text-[10px] text-brand-400 uppercase tracking-widest mb-1">رصيد الكاش المصري المتاح</p>
+                  <p className="text-2xl font-black text-white">{formatCurrency(wallets.EGP)}</p>
                </div>
-               <Input label="المبلغ المراد سحبه" name="amount" type="number" required />
+               <Input label="المبلغ المراد سحبه (EGP)" name="amount" type="number" required />
                <Input name="notes" placeholder="ملاحظات (اختياري)" />
                <p className="text-xs text-slate-500 text-center px-4 leading-relaxed">
-                  سيتم تسجيل المبلغ كمصروف في المحل، وكدخل في ميزانية البيت تلقائياً.
+                  تنبيه: يمكنك سحب الأرصدة المصرية السائلة فقط. لتحويل عملات أخرى، استخدم زر "تحويل عملة".
                </p>
                <Button variant="danger" className="w-full h-14 shadow-xl">تأكيد السحب</Button>
+            </form>
+         </Modal>
+      )}
+
+      {modal?.type === 'EXCHANGE' && (
+         <Modal title="تحويل عملة" onClose={() => setModal(null)}>
+            <form onSubmit={handleExchange} className="space-y-6">
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                     <label className="text-[10px] font-black text-white uppercase px-2">من عملة (بيع)</label>
+                     <select name="from_curr" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 font-bold text-white">
+                        <option value="SDG">SDG (سوداني)</option>
+                        <option value="USD">USD (دولار)</option>
+                        <option value="EGP">EGP (مصري)</option>
+                     </select>
+                  </div>
+                  <div className="space-y-2">
+                     <label className="text-[10px] font-black text-white uppercase px-2">إلى عملة (شراء)</label>
+                     <select name="to_curr" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 font-bold text-white">
+                        <option value="EGP">EGP (مصري)</option>
+                        <option value="USD">USD (دولار)</option>
+                        <option value="SDG">SDG (سوداني)</option>
+                     </select>
+                  </div>
+               </div>
+               
+               <Input label="المبلغ المباع" name="sell_amt" type="number" required />
+               <Input label="المبلغ المستلم" name="buy_amt" type="number" required />
+               
+               <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-xs text-blue-300 font-bold">
+                  سيتم خصم المبلغ المباع من المحفظة الأولى، وإضافة المبلغ المستلم للمحفظة الثانية.
+               </div>
+
+               <Button className="w-full shadow-xl">إتمام التحويل</Button>
             </form>
          </Modal>
       )}
@@ -357,8 +461,21 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
                    })}
                 </div>
               )}
+              
+              <div className="space-y-2">
+                 <label className="text-[11px] font-black text-white px-4">تفاصيل العملة والمبلغ</label>
+                 <div className="grid grid-cols-3 gap-2">
+                    <select name="curr" defaultValue="EGP" className="bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold" onChange={(e:any)=>setModal({...modal, curr: e.target.value})}>
+                        <option value="EGP">EGP</option>
+                        <option value="SDG">SDG</option>
+                        <option value="USD">USD</option>
+                    </select>
+                    {modal.curr && modal.curr !== 'EGP' && <Input name="curr_amt" type="number" placeholder={`المبلغ (${modal.curr})`} required className="col-span-2" />}
+                 </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
-                 <Input label="القيمة المالية" name="a" type="number" required />
+                 <Input label="القيمة المعادلة بالمصري (للحسابات)" name="a" type="number" required />
                  <Input label="التاريخ" name="d" type="date" defaultValue={today} />
               </div>
               <textarea name="n" placeholder="وصف / ملاحظات إضافية..." className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold h-24" />

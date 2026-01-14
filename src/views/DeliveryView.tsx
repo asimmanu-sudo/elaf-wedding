@@ -1,15 +1,25 @@
+
 import React, { useState, useMemo } from 'react';
-import { Truck, PackagePlus, MinusCircle, RotateCcw, Printer } from 'lucide-react';
+import { Truck, PackagePlus, MinusCircle, RotateCcw, Printer, Calculator, RefreshCw, AlertTriangle } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { BookingStatus, SaleStatus, DressStatus } from '../types';
-import { Button, Input, Modal, Card } from '../components/UI';
+import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
 import { today, formatCurrency } from '../utils/helpers';
+import { PAYMENT_METHODS } from '../utils/constants';
 
 export default function DeliveryView({ bookings, sales, query, user, showToast, addLog, onPrint }: any) {
   const [subTab, setSubTab] = useState<'delivery' | 'return' | 'archive'>('delivery');
   const [modal, setModal] = useState<any>(null);
   const [extras, setExtras] = useState<string[]>([]);
   const [newExtra, setNewExtra] = useState('');
+
+  // SMART CALCULATION STATE
+  const [calcState, setCalcState] = useState({ 
+    currency: 'EGP', 
+    egpAmount: 0, 
+    foreignAmount: 0, 
+    rate: 0 
+  });
 
   const toDeliver = useMemo(() => {
     const q = (query || '').toLowerCase();
@@ -38,7 +48,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const item = modal.item;
-    const paidNow = Number(fd.get('paid_now'));
+    const paidNow = calcState.egpAmount || Number(fd.get('paid_now'));
     const staffName = user?.name || 'Admin';
 
     let currentTotalDebt = 0;
@@ -80,7 +90,10 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
                     category: 'تحصيل متبقي (إيجار)',
                     notes: `تحصيل متبقي إيجار فستان ${item.dressName} من العروس ${item.customerName} (عند التسليم)`,
                     date: today,
-                    relatedId: item.id
+                    relatedId: item.id,
+                    currency: calcState.currency !== 'EGP' ? calcState.currency : 'EGP',
+                    currencyAmount: calcState.currency !== 'EGP' ? calcState.foreignAmount : paidNow,
+                    exchangeRate: calcState.currency !== 'EGP' ? calcState.rate : 1
                 });
                 showToast(`تم استلام مبلغ: ${formatCurrency(paidNow)}`);
             }
@@ -101,7 +114,10 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
                     category: 'تحصيل متبقي (تفصيل)',
                     notes: `تحصيل متبقي تفصيل فستان ${item.factoryCode} من العروس ${item.brideName} (عند التسليم)`,
                     date: today,
-                    relatedId: item.id
+                    relatedId: item.id,
+                    currency: calcState.currency !== 'EGP' ? calcState.currency : 'EGP',
+                    currencyAmount: calcState.currency !== 'EGP' ? calcState.foreignAmount : paidNow,
+                    exchangeRate: calcState.currency !== 'EGP' ? calcState.rate : 1
                 });
                 showToast(`تم استلام مبلغ: ${formatCurrency(paidNow)}`);
             }
@@ -109,10 +125,61 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
         }
 
         if (paidNow === 0) showToast('تم التسليم (لم يتم دفع مبالغ إضافية)');
-        setModal(null); setExtras([]);
+        setModal(null); setExtras([]); setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
     } catch (err) {
         showToast('حدث خطأ أثناء الحفظ', 'error');
     }
+  };
+
+  // --- SMART CALCULATION LOGIC (FIXED) ---
+  const handlePaymentMethodChange = (pm: string) => {
+      let curr = 'EGP';
+      if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
+      else if (pm.includes('دولار') || pm.includes('Western') || pm.includes('USD')) curr = 'USD';
+      
+      setCalcState(prev => ({ ...prev, currency: curr, rate: 0, foreignAmount: 0 }));
+      setModal((prev:any) => ({...prev, paymentMethod: pm }));
+  };
+
+  const handleEgpChange = (val: number) => {
+      setCalcState(prev => {
+          if (prev.rate === 0) return { ...prev, egpAmount: val };
+          let newForeign = 0;
+          if (prev.currency === 'SDG') {
+              // SDG logic: Foreign = EGP * Rate
+              newForeign = val * prev.rate;
+          } else {
+              // USD logic: Foreign = EGP / Rate
+              newForeign = val / prev.rate;
+          }
+          return { ...prev, egpAmount: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
+      });
+  };
+
+  const handleRateChange = (val: number) => {
+      setCalcState(prev => {
+          let newForeign = 0;
+          if (prev.currency === 'SDG') {
+              newForeign = prev.egpAmount * val;
+          } else {
+              newForeign = val > 0 ? prev.egpAmount / val : 0;
+          }
+          return { ...prev, rate: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
+      });
+  };
+
+  const handleForeignChange = (val: number) => {
+      setCalcState(prev => {
+          let newRate = 0;
+          if (prev.egpAmount > 0) {
+              if (prev.currency === 'SDG') {
+                  newRate = val / prev.egpAmount;
+              } else {
+                  newRate = val > 0 ? prev.egpAmount / val : 0;
+              }
+          }
+          return { ...prev, foreignAmount: val, rate: parseFloat(newRate.toFixed(4)) };
+      });
   };
 
   const handleReturnConfirm = async (e: any) => {
@@ -147,12 +214,16 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
   };
 
   const undoDelivery = async (item: any) => {
-    if (!confirm('هل أنت متأكد من التراجع عن عملية التسليم؟')) return;
+    setModal({ type: 'CONFIRM_UNDO', item });
+  };
+
+  const executeUndo = async (item: any) => {
     try {
       await cloudDb.update(COLLS.BOOKINGS, item.id, { status: BookingStatus.PENDING, actualPickupDate: null });
       await cloudDb.update(COLLS.DRESSES, item.dressId, { status: DressStatus.AVAILABLE });
       addLog('تراجع تسليم', `تم التراجع عن تسليم فستان ${item.dressName}`);
       showToast('تم التراجع عن التسليم');
+      setModal(null);
     } catch (err) {
       showToast('خطأ', 'error');
     }
@@ -190,8 +261,8 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
               </div>
             </div>
             <div className="flex gap-2">
-              <Button onClick={() => setModal({ type: 'DELIVER_FORM', item })} variant="success" className="flex-1 h-12 text-xs font-bold">تسليم للعروس</Button>
-              <Button variant="ghost" onClick={() => onPrint(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')} className="w-12 h-12 p-0 text-brand-400"><Printer size={18}/></Button>
+              <Button onClick={() => { setModal({ type: 'DELIVER_FORM', item }); setCalcState({ currency: 'EGP', egpAmount: item.remainingToPay || item.remainingFromBride, foreignAmount: 0, rate: 0 }); }} variant="success" className="flex-1 h-12 text-xs font-bold">تسليم للعروس</Button>
+              <Button variant="ghost" onClick={() => onPrint(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')} className="w-12 h-12 p-0 text-blue-400"><Printer size={18}/></Button>
             </div>
           </Card>
         ))}
@@ -215,7 +286,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             <div className="flex gap-2">
               <Button onClick={() => setModal({ type: 'RETURN_FORM', item })} variant="success" className="flex-1 h-12 text-xs font-bold">استلام من العروس</Button>
               <Button onClick={() => undoDelivery(item)} variant="ghost" className="w-12 h-12 p-0 text-red-400"><RotateCcw size={18}/></Button>
-              <Button variant="ghost" onClick={() => onPrint(item, 'RECEIPT')} className="w-12 h-12 p-0 text-brand-400"><Printer size={18}/></Button>
+              <Button variant="ghost" onClick={() => onPrint(item, 'RECEIPT')} className="w-12 h-12 p-0 text-blue-400"><Printer size={18}/></Button>
             </div>
           </Card>
         ))}
@@ -226,7 +297,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
               <h4 className="font-black text-white">{item.customerName || item.brideName}</h4>
               <div className="flex items-center gap-2">
                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${item.type === 'SALE' ? 'bg-orange-500/10 text-orange-400' : 'bg-brand-500/10 text-brand-400'}`}>{item.type === 'SALE' ? 'تفصيل' : 'إيجار'}</span>
-                 <Button variant="ghost" onClick={() => onPrint(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')} className="!w-8 !h-8 !p-0 text-slate-500 hover:text-white"><Printer size={14}/></Button>
+                 <Button variant="ghost" onClick={() => onPrint(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')} className="!w-8 !h-8 !p-0 text-blue-400 hover:text-white"><Printer size={14}/></Button>
               </div>
             </div>
             <p className="text-[10px] font-bold text-surface-500 mb-3">{item.dressName || item.factoryCode}</p>
@@ -246,8 +317,18 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
         )}
       </div>
 
+      {modal?.type === 'CONFIRM_UNDO' && (
+        <ConfirmModal 
+          title="تراجع عن التسليم"
+          msg="هل أنت متأكد من التراجع عن عملية التسليم؟"
+          onConfirm={() => executeUndo(modal.item)}
+          onCancel={() => setModal(null)}
+          confirmText="نعم، تراجع"
+        />
+      )}
+
       {modal?.type === 'DELIVER_FORM' && (
-        <Modal title={`إتمام تسليم: ${modal.item.customerName || modal.item.brideName}`} onClose={() => { setModal(null); setExtras([]); }}>
+        <Modal title={`إتمام تسليم: ${modal.item.customerName || modal.item.brideName}`} onClose={() => { setModal(null); setExtras([]); setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 }); }}>
           <form onSubmit={handleDeliverConfirm} className="space-y-6">
             <div className="bg-slate-950 border border-white/5 p-4 rounded-2xl mb-4 text-center">
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">إجمالي المبلغ المستحق على العروس</p>
@@ -256,13 +337,51 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
                 </p>
             </div>
 
-            <Input 
-                label="المبلغ المدفوع الآن (نقداً)" 
-                name="paid_now" 
-                type="number" 
-                defaultValue={modal.item.remainingToPay || modal.item.remainingFromBride} 
-                required 
-            />
+            <div className="space-y-2">
+               <label className="text-[11px] font-black text-white px-4">تفاصيل الدفع (التحصيل)</label>
+               <Input 
+                  label="المبلغ المدفوع الآن بالمصري (EGP)" 
+                  name="paid_now" 
+                  type="number" 
+                  defaultValue={calcState.egpAmount} 
+                  required 
+                  onChange={(e:any) => handleEgpChange(Number(e.target.value))}
+               />
+               <select name="pm" className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none mt-2" onChange={(e:any)=>handlePaymentMethodChange(e.target.value)}>
+                  <option value="كاش (جنية مصري)">دفع نقدي (مصري)</option>
+                  {PAYMENT_METHODS.filter(p => !p.includes('جنية')).map(p=><option key={p} value={p}>{p}</option>)}
+               </select>
+
+               {/* SMART CURRENCY CALCULATOR */}
+               {calcState.currency !== 'EGP' && (
+                 <div className="p-4 bg-brand-500/5 border border-brand-500/20 rounded-2xl animate-slide-up grid grid-cols-2 gap-4 mt-2">
+                    <div className="col-span-2 flex items-center justify-between text-brand-400 mb-1">
+                        <div className="flex items-center gap-2"><Calculator size={16}/> <span className="text-xs font-bold">حاسبة العملة ({calcState.currency})</span></div>
+                        <RefreshCw size={14} className="opacity-50"/>
+                    </div>
+                    
+                    <Input 
+                      label={`المبلغ بالـ ${calcState.currency}`} 
+                      type="number" 
+                      value={calcState.foreignAmount || ''}
+                      onChange={(e:any) => handleForeignChange(Number(e.target.value))} 
+                      placeholder="0.00" 
+                    />
+                    <Input 
+                      label={calcState.currency === 'SDG' ? `سعر التحويل (كم ${calcState.currency} = 1 جنيه)` : `سعر التحويل (1 ${calcState.currency} = كم جنيه)`}
+                      type="number" 
+                      value={calcState.rate || ''}
+                      placeholder="مثلاً 55" 
+                      onChange={(e:any) => handleRateChange(Number(e.target.value))}
+                    />
+                    <p className="col-span-2 text-[10px] text-center text-slate-500 dir-ltr font-mono">
+                       Formula: {calcState.currency === 'SDG' 
+                         ? `${calcState.foreignAmount} ${calcState.currency} / ${calcState.rate} Rate = ${calcState.egpAmount} EGP`
+                         : `${calcState.foreignAmount} ${calcState.currency} * ${calcState.rate} Rate = ${calcState.egpAmount} EGP`}
+                    </p>
+                 </div>
+               )}
+            </div>
             
             {modal.item.type === 'RENT' && (
               <>
@@ -299,7 +418,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             )}
             <div className="flex gap-2">
                <Button className="flex-1 !rounded-2xl h-16 shadow-xl">تأكيد عملية التسليم</Button>
-               <Button type="button" variant="ghost" onClick={() => onPrint(modal.item, modal.item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')} className="!w-16 !h-16 !p-0 !rounded-2xl border-white/10"><Printer size={24}/></Button>
+               <Button type="button" variant="ghost" onClick={() => onPrint(modal.item, modal.item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')} className="!w-16 !h-16 !p-0 !rounded-2xl border-white/10 text-blue-400"><Printer size={24}/></Button>
             </div>
           </form>
         </Modal>
@@ -337,7 +456,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             )}
             <div className="flex gap-2">
                <Button className="flex-1 !rounded-2xl h-16 shadow-xl">تأكيد الاستلام النهائي</Button>
-               <Button type="button" variant="ghost" onClick={() => onPrint(modal.item, 'RECEIPT')} className="!w-16 !h-16 !p-0 !rounded-2xl border-white/10"><Printer size={24}/></Button>
+               <Button type="button" variant="ghost" onClick={() => onPrint(modal.item, 'RECEIPT')} className="!w-16 !h-16 !p-0 !rounded-2xl border-white/10 text-blue-400"><Printer size={24}/></Button>
             </div>
             <p className="text-center text-[10px] text-slate-500 font-bold">تأكيد الاستلام سيغير حالة الفستان تلقائياً إلى "يحتاج تنظيف".</p>
           </form>
