@@ -1,15 +1,28 @@
 
-import React, { useState } from 'react';
-import { Users, Key, Edit, UserPlus, RotateCcw, BarChart3, AlertTriangle, Palette, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Users, Key, Edit, UserPlus, RotateCcw, BarChart3, AlertTriangle, Palette, Check, Wallet, Calculator, MessageCircle, Save } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { UserRole, BookingStatus } from '../types';
 import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
 import { PERMISSIONS_LIST } from '../utils/constants';
-import { today } from '../utils/helpers';
+import { today, formatCurrency, DEFAULT_WA_TEMPLATES } from '../utils/helpers';
 
 export default function SettingsView({ user, users, bookings, sales, finance, dresses, hasPerm, showToast, addLog, onThemeChange }: any) {
   const [modal, setModal] = useState<any>(null);
   const [currentTheme, setCurrentTheme] = useState(localStorage.getItem('app_theme') || 'default');
+  const [waConfig, setWaConfig] = useState<any>(null);
+
+  // State for Opening Balance Wizard
+  const [openingState, setOpeningState] = useState({ egp: 0, sdg: 0, rate: 50 });
+
+  useEffect(() => {
+    // Load WhatsApp Templates
+    const fetchWaConfig = async () => {
+        const doc = await cloudDb.getDoc(COLLS.METADATA, 'whatsapp_templates');
+        setWaConfig(doc || DEFAULT_WA_TEMPLATES);
+    };
+    fetchWaConfig();
+  }, []);
 
   const handleThemeSwitch = (theme: string) => {
     localStorage.setItem('app_theme', theme);
@@ -94,6 +107,88 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
     setModal(null);
   };
 
+  // --- OPENING BALANCE WIZARD LOGIC ---
+  const handleOpeningBalance = () => {
+      setModal({ type: 'OPENING_BALANCE' });
+  };
+
+  const executeOpeningBalance = async () => {
+      // 1. Calculate Current Balances (Theoretically)
+      const balances = { EGP: 0, SDG: 0, USD: 0 };
+      finance.forEach((f: any) => {
+          if (f.isFuture) return;
+          const curr = (f.currency || 'EGP') as keyof typeof balances;
+          const amt = f.currencyAmount || f.amount || 0;
+          if (f.type === 'INCOME' || f.type === 'EXCHANGE_IN') balances[curr] += amt;
+          if (f.type === 'EXPENSE' || f.type === 'EXCHANGE_OUT') balances[curr] -= amt;
+      });
+
+      // 2. Zero Out Existing Balances (Legacy Adjustment)
+      for (const [currency, balance] of Object.entries(balances)) {
+          if (Math.abs(balance) > 0) {
+              await cloudDb.add(COLLS.FINANCE, {
+                  type: balance > 0 ? 'EXPENSE' : 'INCOME', // Counteract the balance
+                  category: 'تسوية فروقات سابقة',
+                  amount: currency === 'EGP' ? Math.abs(balance) : 0, // EGP Impact
+                  currency: currency,
+                  currencyAmount: Math.abs(balance),
+                  exchangeRate: 1,
+                  notes: `تصفير رصيد ${currency} القديم (${formatCurrency(balance)}) لبدء فترة جديدة.`,
+                  date: today
+              });
+          }
+      }
+
+      // 3. Add New Opening Balances
+      // EGP Cash
+      if (openingState.egp > 0) {
+          await cloudDb.add(COLLS.FINANCE, {
+              type: 'INCOME',
+              category: 'رصيد افتتاحي (كاش)',
+              amount: openingState.egp,
+              currency: 'EGP',
+              currencyAmount: openingState.egp,
+              exchangeRate: 1,
+              notes: 'بداية الرصيد الفعلي في الدرج',
+              date: today
+          });
+      }
+
+      // SDG Bankak
+      if (openingState.sdg > 0) {
+          const equivalentEGP = openingState.sdg * (openingState.rate || 0); // EGP Value for reports
+          await cloudDb.add(COLLS.FINANCE, {
+              type: 'INCOME',
+              category: 'رصيد افتتاحي (بنكك)',
+              amount: equivalentEGP,
+              currency: 'SDG',
+              currencyAmount: openingState.sdg,
+              exchangeRate: openingState.rate,
+              notes: `رصيد بنكك الافتتاحي (${openingState.sdg} SDG) بسعر صرف ${openingState.rate}`,
+              date: today
+          });
+      }
+
+      showToast('تم ضبط الأرصدة الافتتاحية بنجاح');
+      addLog('ضبط أرصدة', `تم تصفير الأرصدة القديمة وضبط EGP: ${openingState.egp}, SDG: ${openingState.sdg}`);
+      setModal(null);
+  };
+
+  const handleSaveWaTemplates = async (e: any) => {
+      e.preventDefault();
+      const fd = new FormData(e.currentTarget);
+      const newConfig = {
+          booking_confirm: fd.get('booking_confirm'),
+          pickup_ready: fd.get('pickup_ready'),
+          return_thanks: fd.get('return_thanks'),
+          payment_reminder: fd.get('payment_reminder')
+      };
+      await cloudDb.update(COLLS.METADATA, 'whatsapp_templates', newConfig);
+      setWaConfig(newConfig);
+      showToast('تم حفظ قوالب الرسائل');
+      setModal(null);
+  };
+
   return (
     <div className="space-y-12 animate-fade-in pb-10 italic">
        <div className="text-center py-10 relative">
@@ -159,13 +254,21 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
                <Button onClick={() => setModal({ type: 'ADD_USER' })} className="w-full !rounded-[2rem] h-18 text-base shadow-xl shadow-brand-900/10 uppercase tracking-widest font-black italic"><UserPlus size={22}/> إضافة موظف جديد</Button>
                
                <div className="space-y-4">
-                  <h4 className="text-white font-bold text-lg px-2 mt-4">أدوات الصيانة</h4>
+                  <h4 className="text-white font-bold text-lg px-2 mt-4">أدوات الصيانة والإدارة</h4>
                   
+                  <Button onClick={() => setModal({ type: 'WA_TEMPLATES' })} className="w-full !rounded-[2rem] h-16 text-base bg-emerald-600 hover:bg-emerald-500 shadow-xl shadow-emerald-900/10 uppercase tracking-widest font-black italic">
+                      <MessageCircle size={22} className="ml-2"/> تخصيص رسائل واتساب (Templates)
+                  </Button>
+
                   <Button onClick={handleFixFinance} className="w-full !rounded-[2rem] h-16 text-base bg-blue-600 hover:bg-blue-500 shadow-xl shadow-blue-900/10 uppercase tracking-widest font-black italic">
                       <RotateCcw size={22} className="ml-2"/> مراجعة وتصحيح السجلات المالية
                   </Button>
                   <Button onClick={handleRecalculateCounts} className="w-full !rounded-[2rem] h-16 text-base bg-orange-600 hover:bg-orange-500 shadow-xl shadow-orange-900/10 uppercase tracking-widest font-black italic">
                       <BarChart3 size={22} className="ml-2"/> تحديث عدادات الإيجار (Recalculate)
+                  </Button>
+                  
+                  <Button onClick={handleOpeningBalance} className="w-full !rounded-[2rem] h-16 text-base bg-slate-700 hover:bg-slate-600 shadow-xl shadow-slate-900/10 uppercase tracking-widest font-black italic">
+                      <Wallet size={22} className="ml-2"/> ضبط الرصيد الافتتاحي (صفر العداد)
                   </Button>
                </div>
             </div>
@@ -211,6 +314,101 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
            variant="primary"
            icon={BarChart3}
          />
+       )}
+
+       {/* WA TEMPLATES EDITOR */}
+       {modal?.type === 'WA_TEMPLATES' && (
+         <Modal title="محرر قوالب واتساب" onClose={() => setModal(null)} size="lg">
+            <div className="mb-6 bg-slate-950 p-4 rounded-xl border border-white/5">
+                <p className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-widest">المتغيرات المتاحة للاستخدام:</p>
+                <div className="flex flex-wrap gap-2 text-[10px] font-mono text-brand-400" dir="ltr">
+                    <span>{`{Name}`}</span> <span>{`{Dress}`}</span> <span>{`{EventDate}`}</span> 
+                    <span>{`{DeliveryDate}`}</span> <span>{`{Fitting1}`}</span> <span>{`{Fitting2}`}</span>
+                    <span>{`{Deposit}`}</span> <span>{`{Remaining}`}</span>
+                </div>
+                <p className="text-[10px] text-slate-600 mt-2 font-bold">سيتم إضافة تذييل "رسالة تلقائية" إجبارياً في نهاية كل رسالة.</p>
+            </div>
+            <form onSubmit={handleSaveWaTemplates} className="space-y-6">
+                <div className="space-y-2">
+                    <label className="text-xs font-black text-white px-2">رسالة تأكيد الحجز</label>
+                    <textarea name="booking_confirm" defaultValue={waConfig?.booking_confirm || DEFAULT_WA_TEMPLATES.booking_confirm} className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-medium h-32 text-xs leading-relaxed" />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-xs font-black text-white px-2">رسالة جاهزية الاستلام</label>
+                    <textarea name="pickup_ready" defaultValue={waConfig?.pickup_ready || DEFAULT_WA_TEMPLATES.pickup_ready} className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-medium h-32 text-xs leading-relaxed" />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-xs font-black text-white px-2">رسالة شكر بعد الإرجاع</label>
+                    <textarea name="return_thanks" defaultValue={waConfig?.return_thanks || DEFAULT_WA_TEMPLATES.return_thanks} className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-medium h-24 text-xs leading-relaxed" />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-xs font-black text-white px-2">رسالة تذكير / مطالبة</label>
+                    <textarea name="payment_reminder" defaultValue={waConfig?.payment_reminder || DEFAULT_WA_TEMPLATES.payment_reminder} className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-medium h-24 text-xs leading-relaxed" />
+                </div>
+                <Button className="w-full !rounded-2xl h-16 shadow-xl"><Save size={20}/> حفظ التغييرات</Button>
+            </form>
+         </Modal>
+       )}
+
+       {/* NEW: Opening Balance Wizard Modal */}
+       {modal?.type === 'OPENING_BALANCE' && (
+         <Modal title="ضبط الرصيد الافتتاحي" onClose={() => setModal(null)} size="md">
+            <div className="space-y-6">
+                <div className="bg-blue-500/10 p-4 rounded-2xl border border-blue-500/20 text-xs text-blue-200 font-bold leading-relaxed">
+                    <p>هذه الأداة تقوم بما يلي:</p>
+                    <ul className="list-disc pr-4 mt-2 space-y-1 opacity-80">
+                        <li>حساب الرصيد "النظري" الحالي في النظام وتصفيره (Zero-out) عبر عملية تسوية تلقائية.</li>
+                        <li>إنشاء عمليات "إيداع" جديدة بالمبالغ الفعلية التي ستدخلها الآن.</li>
+                        <li>لن يتم حذف أي سجلات قديمة، بل إضافة عمليات تسوية فقط.</li>
+                    </ul>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="p-4 bg-slate-950 rounded-2xl border border-white/5">
+                        <Input 
+                            label="النقدية الفعلية بالمصري (الكاش في الدرج)" 
+                            type="number" 
+                            value={openingState.egp || ''}
+                            onChange={(e:any) => setOpeningState({...openingState, egp: Number(e.target.value)})}
+                            placeholder="مثلاً: 5000"
+                            icon={Wallet}
+                        />
+                    </div>
+
+                    <div className="p-4 bg-slate-950 rounded-2xl border border-white/5 space-y-4">
+                        <Input 
+                            label="رصيد بنكك الحالي (اختياري - SDG)" 
+                            type="number" 
+                            value={openingState.sdg || ''}
+                            onChange={(e:any) => setOpeningState({...openingState, sdg: Number(e.target.value)})}
+                            placeholder="مثلاً: 200000"
+                        />
+                        <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                                <Input 
+                                    label="سعر الصرف الحالي (لتقييم رصيد بنكك)" 
+                                    type="number" 
+                                    value={openingState.rate || ''}
+                                    onChange={(e:any) => setOpeningState({...openingState, rate: Number(e.target.value)})}
+                                    icon={Calculator}
+                                />
+                            </div>
+                            {openingState.sdg > 0 && (
+                                <div className="pt-6">
+                                    <span className="text-[10px] text-slate-500 font-bold bg-slate-900 px-3 py-2 rounded-xl">
+                                        = {formatCurrency(openingState.sdg * openingState.rate)} EGP
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <Button onClick={executeOpeningBalance} className="w-full !rounded-2xl h-16 shadow-xl text-base font-black">
+                    <Check size={20} className="ml-2"/> تأكيد وبدء الفترة الجديدة
+                </Button>
+            </div>
+         </Modal>
        )}
        
        {(modal?.type === 'ADD_USER' || modal?.type === 'EDIT_USER') && (

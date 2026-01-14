@@ -131,7 +131,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
     }
   };
 
-  // --- SMART CALCULATION LOGIC (FIXED) ---
+  // --- SMART CALCULATION LOGIC ---
   const handlePaymentMethodChange = (pm: string) => {
       let curr = 'EGP';
       if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
@@ -146,10 +146,8 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
           if (prev.rate === 0) return { ...prev, egpAmount: val };
           let newForeign = 0;
           if (prev.currency === 'SDG') {
-              // SDG logic: Foreign = EGP * Rate
               newForeign = val * prev.rate;
           } else {
-              // USD logic: Foreign = EGP / Rate
               newForeign = val / prev.rate;
           }
           return { ...prev, egpAmount: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
@@ -262,7 +260,15 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             </div>
             <div className="flex gap-2">
               <Button onClick={() => { setModal({ type: 'DELIVER_FORM', item }); setCalcState({ currency: 'EGP', egpAmount: item.remainingToPay || item.remainingFromBride, foreignAmount: 0, rate: 0 }); }} variant="success" className="flex-1 h-12 text-xs font-bold">تسليم للعروس</Button>
-              <Button variant="ghost" onClick={() => onPrint(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')} className="w-12 h-12 p-0 text-blue-400"><Printer size={18}/></Button>
+              {/* Force visible printer button */}
+              <button 
+                type="button" 
+                onClick={() => onPrint(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')}
+                className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-sky-400 border border-white/10 transition-colors"
+                title="طباعة"
+              >
+                <Printer size={20} />
+              </button>
             </div>
           </Card>
         ))}
@@ -285,8 +291,22 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             </div>
             <div className="flex gap-2">
               <Button onClick={() => setModal({ type: 'RETURN_FORM', item })} variant="success" className="flex-1 h-12 text-xs font-bold">استلام من العروس</Button>
-              <Button onClick={() => undoDelivery(item)} variant="ghost" className="w-12 h-12 p-0 text-red-400"><RotateCcw size={18}/></Button>
-              <Button variant="ghost" onClick={() => onPrint(item, 'RECEIPT')} className="w-12 h-12 p-0 text-blue-400"><Printer size={18}/></Button>
+              {/* Force visible undo button */}
+              <button 
+                onClick={() => undoDelivery(item)}
+                className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-red-400 border border-white/10 transition-colors"
+                title="تراجع عن التسليم"
+              >
+                <RotateCcw size={20} />
+              </button>
+              {/* Force visible print button */}
+              <button 
+                onClick={() => onPrint(item, 'RECEIPT')}
+                className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-sky-400 border border-white/10 transition-colors"
+                title="طباعة"
+              >
+                <Printer size={20} />
+              </button>
             </div>
           </Card>
         ))}
@@ -297,7 +317,14 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
               <h4 className="font-black text-white">{item.customerName || item.brideName}</h4>
               <div className="flex items-center gap-2">
                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${item.type === 'SALE' ? 'bg-orange-500/10 text-orange-400' : 'bg-brand-500/10 text-brand-400'}`}>{item.type === 'SALE' ? 'تفصيل' : 'إيجار'}</span>
-                 <Button variant="ghost" onClick={() => onPrint(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')} className="!w-8 !h-8 !p-0 text-blue-400 hover:text-white"><Printer size={14}/></Button>
+                 {/* Compact visible printer button */}
+                 <button 
+                    onClick={() => onPrint(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 text-sky-400 border border-white/10 transition-colors"
+                    title="طباعة"
+                 >
+                    <Printer size={16} />
+                 </button>
               </div>
             </div>
             <p className="text-[10px] font-bold text-surface-500 mb-3">{item.dressName || item.factoryCode}</p>
@@ -418,7 +445,15 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             )}
             <div className="flex gap-2">
                <Button className="flex-1 !rounded-2xl h-16 shadow-xl">تأكيد عملية التسليم</Button>
-               <Button type="button" variant="ghost" onClick={() => onPrint(modal.item, modal.item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')} className="!w-16 !h-16 !p-0 !rounded-2xl border-white/10 text-blue-400"><Printer size={24}/></Button>
+               {/* Modal Printer Button */}
+               <button 
+                 type="button" 
+                 onClick={() => onPrint(modal.item, modal.item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')}
+                 className="w-16 h-16 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-sky-400 border border-white/10 transition-colors"
+                 title="طباعة"
+               >
+                 <Printer size={24} />
+               </button>
             </div>
           </form>
         </Modal>
@@ -456,7 +491,15 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             )}
             <div className="flex gap-2">
                <Button className="flex-1 !rounded-2xl h-16 shadow-xl">تأكيد الاستلام النهائي</Button>
-               <Button type="button" variant="ghost" onClick={() => onPrint(modal.item, 'RECEIPT')} className="!w-16 !h-16 !p-0 !rounded-2xl border-white/10 text-blue-400"><Printer size={24}/></Button>
+               {/* Modal Printer Button */}
+               <button 
+                 type="button" 
+                 onClick={() => onPrint(modal.item, 'RECEIPT')}
+                 className="w-16 h-16 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-sky-400 border border-white/10 transition-colors"
+                 title="طباعة"
+               >
+                 <Printer size={24} />
+               </button>
             </div>
             <p className="text-center text-[10px] text-slate-500 font-bold">تأكيد الاستلام سيغير حالة الفستان تلقائياً إلى "يحتاج تنظيف".</p>
           </form>

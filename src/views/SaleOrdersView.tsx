@@ -1,17 +1,31 @@
 
-import React, { useState, useMemo } from 'react';
-import { Plus, Printer, Edit, Trash2, AlertTriangle, Calculator, RefreshCw, Ruler, Check } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Plus, Printer, Edit, Trash2, AlertTriangle, Calculator, RefreshCw, Ruler, Check, MessageCircle } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { SaleStatus, FactoryPaymentStatus } from '../types';
 import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
-import { today, formatCurrency } from '../utils/helpers';
-import { PAYMENT_METHODS, MEASUREMENT_FIELDS } from '../utils/constants';
+import { today, formatCurrency, getWhatsAppLink, DEFAULT_WA_TEMPLATES, WATemplateKey } from '../utils/helpers';
+import { PAYMENT_METHODS, MEASUREMENT_FIELDS, COUNTRY_CODES } from '../utils/constants';
 
 export default function SaleOrdersView({ sales, finance, query, hasPerm, showToast, addLog, onPrint }: any) {
   const [subTab, setSubTab] = useState<'current' | 'past'>('current');
   const [modal, setModal] = useState<any>(null);
   const [pendingSave, setPendingSave] = useState<any>(null);
   
+  // Custom WA Templates State
+  const [waTemplates, setWaTemplates] = useState(DEFAULT_WA_TEMPLATES);
+
+  useEffect(() => {
+      // Fetch templates once on mount
+      cloudDb.getDoc(COLLS.METADATA, 'whatsapp_templates').then(doc => {
+          if (doc) setWaTemplates(doc);
+      });
+  }, []);
+
+  // PHONE STATE
+  const [phoneCode, setPhoneCode] = useState('+20');
+  const [localPhone, setLocalPhone] = useState('');
+
   // SMART CALCULATION STATE
   const [calcState, setCalcState] = useState({ 
     currency: 'EGP', 
@@ -46,6 +60,29 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
     }
   };
 
+  // OPEN ADD/EDIT MODAL & INIT PHONE
+  const openModal = (type: 'ADD' | 'EDIT', item?: any) => {
+      if (type === 'EDIT' && item) {
+          let code = '+20';
+          let num = item.bridePhone || '';
+          const found = COUNTRY_CODES.find(c => c.code && num.startsWith(c.code));
+          if (found) {
+              code = found.code;
+              num = num.replace(code, '');
+          } else if (num.startsWith('0')) {
+              code = '+20';
+          }
+          setPhoneCode(code);
+          setLocalPhone(num);
+          setModal({ ...item, type: 'EDIT' });
+      } else {
+          setPhoneCode('+20');
+          setLocalPhone('');
+          setModal({ type: 'ADD' });
+      }
+      setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
+  };
+
   const handleSave = async (data: any, isAdd: boolean, sId: string) => {
       const finalData = {
         ...data,
@@ -76,12 +113,30 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
       setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
   };
 
-  // --- SMART CALCULATION LOGIC (FIXED) ---
+  // --- WHATSAPP LOGIC ---
+  const handleWhatsAppClick = (s: any) => {
+      setModal({ type: 'WHATSAPP_TEMPLATES', data: s });
+  };
+
+  const sendWhatsApp = (templateType: WATemplateKey, data: any) => {
+      const waData = {
+          Name: data.brideName,
+          Dress: data.factoryCode,
+          DeliveryDate: data.expectedDeliveryDate,
+          Deposit: data.deposit,
+          Remaining: data.remainingFromBride
+      };
+
+      const url = getWhatsAppLink(data.bridePhone, templateType, waData, waTemplates);
+      window.open(url, '_blank');
+      setModal(null);
+  };
+
+  // --- SMART CALCULATION LOGIC ---
   const handlePaymentMethodChange = (pm: string) => {
       let curr = 'EGP';
       if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
-      else if (pm.includes('دولار') || pm.includes('Western') || pm.includes('USD')) curr = 'USD';
-      
+      else if (pm.includes('دولار') || pm.includes('USD')) curr = 'USD';
       setCalcState(prev => ({ ...prev, currency: curr, rate: 0, foreignAmount: 0 }));
       setModal((prev:any) => ({...prev, paymentMethod: pm }));
   };
@@ -90,13 +145,8 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
       setCalcState(prev => {
           if (prev.rate === 0) return { ...prev, egpAmount: val };
           let newForeign = 0;
-          if (prev.currency === 'SDG') {
-              // SDG: Foreign = EGP * Rate
-              newForeign = val * prev.rate;
-          } else {
-              // USD: Foreign = EGP / Rate
-              newForeign = val / prev.rate;
-          }
+          if (prev.currency === 'SDG') newForeign = val * prev.rate;
+          else newForeign = val / prev.rate;
           return { ...prev, egpAmount: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
       });
   };
@@ -104,11 +154,8 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
   const handleRateChange = (val: number) => {
       setCalcState(prev => {
           let newForeign = 0;
-          if (prev.currency === 'SDG') {
-              newForeign = prev.egpAmount * val;
-          } else {
-              newForeign = val > 0 ? prev.egpAmount / val : 0;
-          }
+          if (prev.currency === 'SDG') newForeign = prev.egpAmount * val;
+          else newForeign = val > 0 ? prev.egpAmount / val : 0;
           return { ...prev, rate: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
       });
   };
@@ -117,11 +164,8 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
       setCalcState(prev => {
           let newRate = 0;
           if (prev.egpAmount > 0) {
-              if (prev.currency === 'SDG') {
-                  newRate = val / prev.egpAmount;
-              } else {
-                  newRate = val > 0 ? prev.egpAmount / val : 0;
-              }
+              if (prev.currency === 'SDG') newRate = val / prev.egpAmount;
+              else newRate = val > 0 ? prev.egpAmount / val : 0;
           }
           return { ...prev, foreignAmount: val, rate: parseFloat(newRate.toFixed(4)) };
       });
@@ -138,7 +182,7 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
       </div>
 
       {subTab === 'current' && hasPerm('add_sale') && (
-        <Button onClick={() => { setModal({ type: 'ADD' }); setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 }); }} className="w-full !rounded-[2.5rem] h-16 shadow-xl"><Plus size={20}/> تسجيل طلب تفصيل جديد</Button>
+        <Button onClick={() => openModal('ADD')} className="w-full !rounded-[2.5rem] h-16 shadow-xl"><Plus size={20}/> تسجيل طلب تفصيل جديد</Button>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -156,6 +200,7 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
                 <div className="flex justify-between items-center"><span className="text-[9px] font-black text-surface-500 uppercase tracking-widest">التسليم المتوقع</span><span className="text-sm font-bold text-white tracking-tight">{s.expectedDeliveryDate}</span></div>
               </div>
               <div className="flex gap-2">
+                <Button variant="ghost" onClick={() => handleWhatsAppClick(s)} className="!w-12 !h-12 !p-0 text-emerald-500 hover:bg-emerald-500/10"><MessageCircle size={18}/></Button>
                 <Button 
                   variant="ghost" 
                   onClick={() => setModal({ ...s, type: 'MEASURE' })} 
@@ -165,7 +210,7 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
                   {hasMeasurements ? 'تم أخذ المقاسات' : 'لم يتم تسجيل المقاسات'}
                 </Button>
                 <Button variant="ghost" onClick={() => onPrint(s, 'DEPOSIT')} className="!w-12 !h-12 !p-0 text-brand-400"><Printer size={18}/></Button>
-                <Button variant="ghost" onClick={() => setModal({ ...s, type: 'EDIT' })} className="!w-12 !h-12 !p-0 text-surface-500"><Edit size={18}/></Button>
+                <Button variant="ghost" onClick={() => openModal('EDIT', s)} className="!w-12 !h-12 !p-0 text-surface-500"><Edit size={18}/></Button>
                 <Button variant="ghost" onClick={() => handleDelete(s)} className="!w-12 !h-12 !p-0 text-red-400"><Trash2 size={18}/></Button>
               </div>
             </Card>
@@ -183,6 +228,39 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
           confirmText="نعم، حذف نهائي"
         />
       )}
+
+      {/* WHATSAPP TEMPLATES MODAL */}
+      {modal?.type === 'WHATSAPP_TEMPLATES' && (
+        <Modal title="مراسلة العروس (واتساب)" onClose={() => setModal(null)} size="sm">
+           <div className="space-y-4">
+              <p className="text-sm font-bold text-slate-400 text-center mb-4">اختر نوع الرسالة للإرسال:</p>
+              
+              <button onClick={() => sendWhatsApp('BOOKING_CONFIRM', modal.data)} className="w-full p-4 bg-brand-500/10 border border-brand-500/20 rounded-2xl flex items-center gap-4 hover:bg-brand-500/20 transition-all group text-right">
+                 <div className="w-10 h-10 rounded-full bg-brand-500 text-white flex items-center justify-center shrink-0"><Check size={20}/></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">تأكيد الطلب</h4>
+                    <p className="text-[10px] text-slate-400">رسالة ترحيب وتفاصيل الموعد والعربون</p>
+                 </div>
+              </button>
+
+              <button onClick={() => sendWhatsApp('PICKUP_READY', modal.data)} className="w-full p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center gap-4 hover:bg-blue-500/20 transition-all group text-right">
+                 <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center shrink-0"><Check size={20}/></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">جاهزية الاستلام</h4>
+                    <p className="text-[10px] text-slate-400">إشعار بجاهزية الفستان والمتبقي المالي</p>
+                 </div>
+              </button>
+
+              <button onClick={() => sendWhatsApp('PAYMENT_REMINDER', modal.data)} className="w-full p-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl flex items-center gap-4 hover:bg-orange-500/20 transition-all group text-right">
+                 <div className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center shrink-0"><AlertTriangle size={20}/></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">تذكير عام</h4>
+                    <p className="text-[10px] text-slate-400">تذكير بموعد أو دفعة مالية</p>
+                 </div>
+              </button>
+           </div>
+        </Modal>
+      )}
       
       {(modal?.type === 'ADD' || modal?.type === 'EDIT') && (
         <Modal title={modal.type === 'ADD' ? 'طلب تفصيل' : 'تعديل تفصيل'} onClose={() => setModal(null)} size="lg">
@@ -193,8 +271,13 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
             const sp = Number(fd.get('sp')); const dep = calcState.egpAmount || Number(fd.get('dep'));
             const fp = Number(fd.get('fp'));
 
+            // Combined International Phone
+            const fullPhone = `${phoneCode}${localPhone}`.trim();
+
             const data = {
-              factoryCode: code, brideName: fd.get('n'), bridePhone: fd.get('ph'), brideAddress: fd.get('addr'),
+              factoryCode: code, brideName: fd.get('n'), 
+              bridePhone: fullPhone,
+              brideAddress: fd.get('addr'),
               expectedDeliveryDate: fd.get('ed'), sellPrice: sp, factoryPrice: fp,
               deposit: dep, remainingFromBride: sp - dep, description: fd.get('d'),
               status: modal.status || SaleStatus.DESIGNING, factoryStatus: modal.factoryStatus || FactoryPaymentStatus.UNPAID,
@@ -211,9 +294,31 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
             await handleSave(data, modal.type === 'ADD', modal.id);
           }} className="space-y-5">
             <Input label="كود المصنع" name="c" defaultValue={modal.factoryCode} required />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input label="اسم العروس" name="n" defaultValue={modal.brideName} required />
-              <Input label="الهاتف" name="ph" defaultValue={modal.bridePhone} required />
+              
+              {/* PHONE INPUT WITH COUNTRY CODE */}
+               <div className="space-y-2">
+                  <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">رقم الهاتف (واتساب)</label>
+                  <div className="flex gap-2" dir="ltr">
+                      <select 
+                        className="w-1/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none text-sm"
+                        value={phoneCode}
+                        onChange={(e) => setPhoneCode(e.target.value)}
+                      >
+                          {COUNTRY_CODES.map(c => (
+                              <option key={c.code} value={c.code}>{c.flag} {c.code}</option>
+                          ))}
+                      </select>
+                      <input 
+                        className="w-2/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none placeholder:text-slate-700"
+                        placeholder="10xxxxxxxx"
+                        value={localPhone}
+                        onChange={(e) => setLocalPhone(e.target.value)}
+                        required
+                      />
+                  </div>
+               </div>
             </div>
             <Input label="العنوان" name="addr" defaultValue={modal.brideAddress} />
             <Input label="تاريخ التسليم المتوقع" name="ed" type="date" defaultValue={modal.expectedDeliveryDate} required />

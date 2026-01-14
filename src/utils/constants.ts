@@ -3,6 +3,7 @@
 import { 
   Home, Shirt, Calendar, ShoppingBag, Factory, Truck, Users, DollarSign, FileText, Settings, Wallet
 } from 'lucide-react';
+import { CountryCode } from '../types';
 
 // FINANCIAL DEFAULTS
 export const DEFAULT_RENT_OPS_FEE = 1200; // قيمة التشغيل الثابتة (غسيل + تعديل)
@@ -28,6 +29,14 @@ export const PAYMENT_METHODS = [
   "كاش (جنية مصري)",
   "كاش (دولار)",
   "أخرى"
+];
+
+export const COUNTRY_CODES: CountryCode[] = [
+  { code: '+20', flag: '🇪🇬', label: 'مصر' },
+  { code: '+249', flag: '🇸🇩', label: 'السودان' },
+  { code: '+966', flag: '🇸🇦', label: 'السعودية' },
+  { code: '+971', flag: '🇦🇪', label: 'الإمارات' },
+  { code: '', flag: '🌎', label: 'دولي (يدوي)' },
 ];
 
 export const FINANCE_CATEGORIES = [

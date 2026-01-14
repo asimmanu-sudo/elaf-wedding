@@ -9,6 +9,20 @@ export enum FactoryPaymentStatus { UNPAID = 'غير مدفوع', PARTIAL = 'مد
 export enum DressCondition { NEW = 'جديد (أول لبسة)', USED = 'مستعمل' }
 export enum PaymentMethod { CASH_EGP = 'كاش (جنيه)', BANK_EGP = 'تحويل بنكي', BANKAK_SDG = 'بنكك (سوداني)', CASH_USD = 'كاش (دولار)', WU = 'Western Union' }
 
+export interface CountryCode {
+  code: string;
+  flag: string;
+  label: string;
+}
+
+export interface WhatsAppConfig {
+  id?: string;
+  booking_confirm: string;
+  pickup_ready: string;
+  return_thanks: string;
+  payment_reminder: string;
+}
+
 export interface User {
   id: string;
   username: string;

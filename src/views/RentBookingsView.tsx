@@ -1,17 +1,33 @@
 
-import React, { useState, useMemo } from 'react';
-import { Plus, Printer, Ruler, Edit, Trash2, AlertTriangle, Calculator, RefreshCw, Check, X, Info } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Plus, Printer, Ruler, Edit, Trash2, AlertTriangle, Calculator, RefreshCw, Check, MessageCircle, Send, Calendar as CalendarIcon, List, ChevronRight, ChevronLeft } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { BookingStatus, DressType, DressStatus } from '../types';
 import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
-import { today, formatCurrency } from '../utils/helpers';
-import { PAYMENT_METHODS, MEASUREMENT_FIELDS } from '../utils/constants';
+import { today, formatCurrency, getWhatsAppLink, DEFAULT_WA_TEMPLATES, WATemplateKey } from '../utils/helpers';
+import { PAYMENT_METHODS, MEASUREMENT_FIELDS, COUNTRY_CODES } from '../utils/constants';
 
 export default function RentBookingsView({ dresses, bookings, finance, query, hasPerm, showToast, addLog, onPrint }: any) {
   const [subTab, setSubTab] = useState<'current' | 'past' | 'fittings'>('current');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list'); // New State
+  const [currentMonth, setCurrentMonth] = useState(new Date()); // New State for Calendar
   const [modal, setModal] = useState<any>(null);
   const [pendingSave, setPendingSave] = useState<any>(null);
   const [printFilter, setPrintFilter] = useState({ month: '', selectedIds: [] as string[] });
+  
+  // Custom WA Templates State
+  const [waTemplates, setWaTemplates] = useState(DEFAULT_WA_TEMPLATES);
+
+  useEffect(() => {
+      // Fetch templates once on mount
+      cloudDb.getDoc(COLLS.METADATA, 'whatsapp_templates').then(doc => {
+          if (doc) setWaTemplates(doc);
+      });
+  }, []);
+
+  // PHONE STATE
+  const [phoneCode, setPhoneCode] = useState('+20');
+  const [localPhone, setLocalPhone] = useState('');
 
   // SMART CALCULATION STATE
   const [calcState, setCalcState] = useState({ 
@@ -30,8 +46,46 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
     }).sort((a: any, b: any) => a.eventDate.localeCompare(b.eventDate));
   }, [bookings, subTab, query]);
 
+  const filteredForPrint = useMemo(() => {
+    if (!printFilter.month) return [];
+    return bookings.filter((b: any) => b.eventDate && b.eventDate.startsWith(printFilter.month))
+        .sort((a: any, b: any) => a.eventDate.localeCompare(b.eventDate));
+  }, [bookings, printFilter.month]);
+
+  // --- CALENDAR LOGIC ---
+  const calendarData = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    
+    const firstDayOfMonth = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
+    // Adjust for RTL (Saturday start): JS getDay() 0=Sun, 6=Sat. 
+    // We want Sat=0, Sun=1, ... Fri=6
+    const startDay = (firstDayOfMonth.getDay() + 1) % 7; 
+
+    const days = [];
+    // Padding days
+    for (let i = 0; i < startDay; i++) days.push(null);
+    // Real days
+    for (let i = 1; i <= daysInMonth; i++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+        days.push({
+            day: i,
+            date: dateStr,
+            bookings: bookings.filter((b: any) => b.eventDate === dateStr && b.status !== BookingStatus.CANCELLED)
+        });
+    }
+    return days;
+  }, [currentMonth, bookings]);
+
+  const changeMonth = (delta: number) => {
+      const newDate = new Date(currentMonth);
+      newDate.setMonth(newDate.getMonth() + delta);
+      setCurrentMonth(newDate);
+  };
+
   const handleDelete = async (b: any) => {
-    // Open Confirmation Modal instead of window.confirm
     setModal({ type: 'CONFIRM_DELETE', data: b });
   };
 
@@ -52,31 +106,43 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
 
   const handleFitting1Click = async (b: any) => {
       const isDone = b.fitting1Done;
-      
-      // If currently DONE, just toggle it OFF (simple undo)
       if (isDone) {
           await cloudDb.update(COLLS.BOOKINGS, b.id, { fitting1Done: false });
           return;
       }
-
-      // If currently NOT DONE, show custom modal for workflow
       setModal({ type: 'CONFIRM_FITTING_WORKFLOW', data: b });
   };
 
-  const executeFittingWorkflow = async (b: any, openMeasurements: boolean) => {
-      await cloudDb.update(COLLS.BOOKINGS, b.id, { fitting1Done: true });
-      if (openMeasurements) {
-          setModal({ ...b, type: 'MEASURE' });
+  // OPEN ADD/EDIT MODAL & INIT PHONE
+  const openModal = (type: 'ADD' | 'EDIT', item?: any) => {
+      if (type === 'EDIT' && item) {
+          // Detect country code
+          let code = '+20';
+          let num = item.customerPhone || '';
+          
+          const found = COUNTRY_CODES.find(c => c.code && num.startsWith(c.code));
+          if (found) {
+              code = found.code;
+              num = num.replace(code, '');
+          } else if (num.startsWith('0')) {
+              code = '+20';
+          }
+          
+          setPhoneCode(code);
+          setLocalPhone(num);
+          setModal({ ...item, type: 'EDIT' });
       } else {
-          setModal(null);
+          setPhoneCode('+20');
+          setLocalPhone('');
+          setModal({ type: 'ADD' });
       }
+      setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
   };
 
   const executeSave = async (data: any) => {
      let bId = data.id;
      const isAdd = !bId; 
 
-     // Attach currency data if foreign
      const finalData = {
         ...data,
         originalCurrency: calcState.currency !== 'EGP' ? calcState.currency : 'EGP',
@@ -86,16 +152,14 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
 
      if (isAdd) {
        bId = await cloudDb.add(COLLS.BOOKINGS, finalData);
-       
        const dress = dresses.find((d: any) => d.id === finalData.dressId);
        if (dress) {
           await cloudDb.update(COLLS.DRESSES, dress.id, { rentalCount: (dress.rentalCount || 0) + 1 });
        }
-
        const deposit = Number(finalData.paidDeposit);
        if (deposit > 0) {
           await cloudDb.add(COLLS.FINANCE, {
-            amount: deposit, // EGP Value
+            amount: deposit,
             currency: finalData.originalCurrency,
             currencyAmount: finalData.foreignAmount || deposit,
             exchangeRate: finalData.exchangeRate,
@@ -103,29 +167,41 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
             notes: `عربون حجز فستان ${finalData.dressName} للعروس ${finalData.customerName}`,
             date: finalData.createdAt, relatedId: bId
           });
-          showToast('تم تسجيل عملية مالية بقيمة: ' + deposit);
        }
      } else {
        await cloudDb.update(COLLS.BOOKINGS, finalData.id, finalData);
      }
      showToast('تم الحفظ بنجاح'); 
-     setModal(null);
-     setPendingSave(null);
+     setModal(null); setPendingSave(null);
      setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
   };
 
-  const filteredForPrint = useMemo(() => {
-    return bookings.filter((b: any) => b.status !== BookingStatus.COMPLETED && b.status !== BookingStatus.CANCELLED)
-      .filter((b: any) => !printFilter.month || b.eventDate.startsWith(printFilter.month))
-      .sort((a: any, b: any) => a.eventDate.localeCompare(b.eventDate));
-  }, [bookings, printFilter.month]);
+  // --- WHATSAPP LOGIC ---
+  const handleWhatsAppClick = (b: any) => {
+      setModal({ type: 'WHATSAPP_TEMPLATES', data: b });
+  };
+
+  const sendWhatsApp = (templateType: WATemplateKey, data: any) => {
+      const waData = {
+          Name: data.customerName,
+          Dress: data.dressName,
+          EventDate: data.eventDate,
+          Fitting1: data.fitting1Date,
+          Fitting2: data.fitting2Date,
+          Deposit: data.paidDeposit,
+          Remaining: data.remainingToPay
+      };
+
+      const url = getWhatsAppLink(data.customerPhone, templateType, waData, waTemplates);
+      window.open(url, '_blank');
+      setModal(null);
+  };
 
   // --- SMART CALCULATION LOGIC ---
   const handlePaymentMethodChange = (pm: string) => {
       let curr = 'EGP';
       if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
-      else if (pm.includes('دولار') || pm.includes('Western') || pm.includes('USD')) curr = 'USD';
-      
+      else if (pm.includes('دولار') || pm.includes('USD')) curr = 'USD';
       setCalcState(prev => ({ ...prev, currency: curr, rate: 0, foreignAmount: 0 }));
       setModal((prev:any) => ({...prev, paymentMethod: pm }));
   };
@@ -134,13 +210,8 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
       setCalcState(prev => {
           if (prev.rate === 0) return { ...prev, egpAmount: val };
           let newForeign = 0;
-          if (prev.currency === 'SDG') {
-              // SDG logic: Foreign = EGP * Rate (since Rate is SDG per 1 EGP)
-              newForeign = val * prev.rate;
-          } else {
-              // USD logic: Foreign = EGP / Rate
-              newForeign = val / prev.rate;
-          }
+          if (prev.currency === 'SDG') newForeign = val * prev.rate;
+          else newForeign = val / prev.rate;
           return { ...prev, egpAmount: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
       });
   };
@@ -148,13 +219,8 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
   const handleRateChange = (val: number) => {
       setCalcState(prev => {
           let newForeign = 0;
-          if (prev.currency === 'SDG') {
-              // SDG: Foreign = EGP * Rate
-              newForeign = prev.egpAmount * val;
-          } else {
-              // USD: Foreign = EGP / Rate
-              newForeign = val > 0 ? prev.egpAmount / val : 0;
-          }
+          if (prev.currency === 'SDG') newForeign = prev.egpAmount * val;
+          else newForeign = val > 0 ? prev.egpAmount / val : 0;
           return { ...prev, rate: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
       });
   };
@@ -163,13 +229,8 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
       setCalcState(prev => {
           let newRate = 0;
           if (prev.egpAmount > 0) {
-              if (prev.currency === 'SDG') {
-                  // SDG: Rate = Foreign / EGP
-                  newRate = val / prev.egpAmount;
-              } else {
-                  // USD: Rate = EGP / Foreign
-                  newRate = val > 0 ? prev.egpAmount / val : 0;
-              }
+              if (prev.currency === 'SDG') newRate = val / prev.egpAmount;
+              else newRate = val > 0 ? prev.egpAmount / val : 0;
           }
           return { ...prev, foreignAmount: val, rate: parseFloat(newRate.toFixed(4)) };
       });
@@ -178,20 +239,80 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
   return (
     <div className="space-y-8 animate-fade-in">
        {/* Top Bar */}
-       <div className="flex bg-slate-900/60 p-1.5 rounded-2xl border border-white/5 sticky top-0 z-50 backdrop-blur-xl shadow-lg">
-        {['current', 'past', 'fittings'].map(t => (
-          <button key={t} onClick={() => setSubTab(t as any)} className={`flex-1 h-11 rounded-xl text-[11px] font-black transition-all uppercase tracking-widest ${subTab === t ? 'bg-brand-600 text-white shadow-lg' : 'text-surface-500 hover:text-white'}`}>
-            {t === 'current' ? 'نشط' : t === 'past' ? 'منتهي' : 'البروفات'}
-          </button>
-        ))}
+       <div className="flex flex-col md:flex-row gap-4 justify-between items-center sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl p-2 rounded-3xl border-b border-white/5">
+          <div className="flex bg-slate-900/60 p-1.5 rounded-2xl border border-white/5 w-full md:w-auto">
+            {['current', 'past', 'fittings'].map(t => (
+              <button key={t} onClick={() => setSubTab(t as any)} className={`flex-1 md:flex-none px-4 h-10 rounded-xl text-[10px] font-black transition-all uppercase tracking-widest ${subTab === t ? 'bg-brand-600 text-white shadow-lg' : 'text-surface-500 hover:text-white'}`}>
+                {t === 'current' ? 'نشط' : t === 'past' ? 'منتهي' : 'البروفات'}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 bg-slate-900/60 p-1.5 rounded-2xl border border-white/5 w-full md:w-auto">
+             <button 
+               onClick={() => setViewMode('list')}
+               className={`flex-1 md:flex-none w-12 h-10 flex items-center justify-center rounded-xl transition-all ${viewMode === 'list' ? 'bg-brand-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+             >
+               <List size={20} />
+             </button>
+             <button 
+               onClick={() => setViewMode('calendar')}
+               className={`flex-1 md:flex-none w-12 h-10 flex items-center justify-center rounded-xl transition-all ${viewMode === 'calendar' ? 'bg-brand-500 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}
+             >
+               <CalendarIcon size={18} />
+             </button>
+          </div>
       </div>
 
       <div className="flex gap-2">
-        {subTab === 'current' && hasPerm('add_booking') && <Button onClick={() => { setModal({ type: 'ADD' }); setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 }); }} className="flex-1 !rounded-[2.5rem] h-16 shadow-xl"><Plus size={20}/> تسجيل حجز جديد</Button>}
+        {subTab === 'current' && hasPerm('add_booking') && <Button onClick={() => openModal('ADD')} className="flex-1 !rounded-[2.5rem] h-16 shadow-xl"><Plus size={20}/> تسجيل حجز جديد</Button>}
         {subTab === 'current' && <Button variant="ghost" onClick={() => setModal({ type: 'PRINT_SCHEDULE' })} className="!w-16 !h-16 !rounded-[2.5rem] border-white/10"><Printer size={22}/></Button>}
       </div>
 
-      {/* Bookings Grid */}
+      {/* VIEW: CALENDAR */}
+      {viewMode === 'calendar' && (
+        <div className="animate-fade-in space-y-4">
+            {/* Calendar Header */}
+            <div className="flex items-center justify-between bg-slate-900 border border-white/5 p-4 rounded-3xl">
+                <button onClick={() => changeMonth(-1)} className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center"><ChevronRight /></button>
+                <h3 className="text-lg font-black text-white">{currentMonth.toLocaleString('ar-EG', { month: 'long', year: 'numeric' })}</h3>
+                <button onClick={() => changeMonth(1)} className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center"><ChevronLeft /></button>
+            </div>
+
+            {/* Calendar Grid */}
+            <div className="grid grid-cols-7 gap-1">
+                {/* Days Header */}
+                {['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'].map(d => (
+                    <div key={d} className="text-center py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">{d}</div>
+                ))}
+
+                {/* Calendar Cells */}
+                {calendarData.map((d, idx) => {
+                    if (!d) return <div key={idx} className="bg-transparent h-24 md:h-32"></div>;
+                    const isToday = d.date === today;
+                    return (
+                        <div key={idx} className={`bg-slate-900 border ${isToday ? 'border-brand-500 shadow-brand-500/20 shadow-md' : 'border-white/5'} rounded-xl p-1 h-24 md:h-32 flex flex-col gap-1 overflow-hidden relative`}>
+                            <span className={`text-[10px] font-black absolute top-1 right-2 ${isToday ? 'text-brand-400' : 'text-slate-600'}`}>{d.day}</span>
+                            <div className="mt-4 flex-1 overflow-y-auto custom-scrollbar space-y-1">
+                                {d.bookings.map((b: any) => (
+                                    <button 
+                                        key={b.id} 
+                                        onClick={() => openModal('EDIT', b)}
+                                        className={`w-full text-right px-1.5 py-1 rounded text-[8px] md:text-[9px] font-bold truncate block ${b.status === BookingStatus.ACTIVE ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20' : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'}`}
+                                    >
+                                        {b.customerName.split(' ')[0]} - {b.dressName}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+      )}
+
+      {/* VIEW: LIST (Existing Grid) */}
+      {viewMode === 'list' && (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {subTab === 'fittings' ? (
           filtered.map((b: any) => (
@@ -203,13 +324,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
               <div className="grid grid-cols-2 gap-4">
                 <div className={`p-4 rounded-2xl border ${b.fitting1Done ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-950 border-white/5'}`}>
                   <p className="text-[9px] font-black text-slate-500 uppercase mb-2">البروفه الأولى</p>
-                  <Button 
-                    variant={b.fitting1Done ? 'success' : 'ghost'} 
-                    className="w-full h-10 text-xs" 
-                    onClick={() => handleFitting1Click(b)}
-                  >
-                    {b.fitting1Done ? 'تمت البروفه' : 'تأكيد الأولى'}
-                  </Button>
+                  <Button variant={b.fitting1Done ? 'success' : 'ghost'} className="w-full h-10 text-xs" onClick={() => handleFitting1Click(b)}>{b.fitting1Done ? 'تمت البروفه' : 'تأكيد الأولى'}</Button>
                 </div>
                 <div className={`p-4 rounded-2xl border ${b.fitting2Done ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-950 border-white/5'}`}>
                   <p className="text-[9px] font-black text-slate-500 uppercase mb-2">البروفه الثانية</p>
@@ -234,6 +349,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                 <div><span className="text-[9px] font-black text-surface-500 uppercase tracking-widest block mb-1">تاريخ التسليم</span><p className="text-sm font-black text-emerald-400 tracking-tight">{b.deliveryDate}</p></div>
               </div>
               <div className="flex gap-2">
+                <Button variant="ghost" onClick={() => handleWhatsAppClick(b)} className="!w-12 !h-12 !p-0 text-emerald-500 hover:bg-emerald-500/10"><MessageCircle size={18}/></Button>
                 <Button 
                   variant="ghost" 
                   onClick={() => setModal({ ...b, type: 'MEASURE' })} 
@@ -242,15 +358,15 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                   {hasMeasurements ? <Check size={16}/> : <Ruler size={16}/>}
                   {hasMeasurements ? 'تم أخذ المقاسات' : 'لم يتم تسجيل المقاسات'}
                 </Button>
-                
                 <Button variant="ghost" onClick={() => onPrint(b, 'DEPOSIT')} className="!w-12 !h-12 !p-0 text-brand-400"><Printer size={18}/></Button>
-                <Button variant="ghost" onClick={() => setModal({ ...b, type: 'EDIT' })} className="!w-12 !h-12 !p-0 text-surface-500"><Edit size={18}/></Button>
+                <Button variant="ghost" onClick={() => openModal('EDIT', b)} className="!w-12 !h-12 !p-0 text-surface-500"><Edit size={18}/></Button>
                 <Button variant="ghost" onClick={() => handleDelete(b)} className="!w-12 !h-12 !p-0 text-red-400"><Trash2 size={18}/></Button>
               </div>
             </Card>
           );
         })}
       </div>
+      )}
 
       {/* CONFIRM DELETE MODAL */}
       {modal?.type === 'CONFIRM_DELETE' && (
@@ -263,18 +379,43 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
         />
       )}
 
-      {/* CONFIRM FITTING WORKFLOW MODAL */}
-      {modal?.type === 'CONFIRM_FITTING_WORKFLOW' && (
-        <Modal title="تأكيد البروفة الأولى" onClose={() => setModal(null)} size="sm">
-           <div className="text-center space-y-6">
-              <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto bg-brand-500/10 text-brand-500 border border-brand-500/20">
-                 <Ruler size={40} />
-              </div>
-              <p className="text-white font-bold text-lg leading-relaxed">تم تأكيد البروفة الأولى. هل تريد تسجيل المقاسات الآن؟</p>
-              <div className="grid grid-cols-2 gap-4 pt-2">
-                 <Button variant="ghost" onClick={() => executeFittingWorkflow(modal.data, false)} className="!rounded-xl">لا، فقط تأكيد البروفة</Button>
-                 <Button variant="primary" onClick={() => executeFittingWorkflow(modal.data, true)} className="!rounded-xl">نعم، تسجيل المقاسات</Button>
-              </div>
+      {/* WHATSAPP TEMPLATES MODAL */}
+      {modal?.type === 'WHATSAPP_TEMPLATES' && (
+        <Modal title="مراسلة العروس (واتساب)" onClose={() => setModal(null)} size="sm">
+           <div className="space-y-4">
+              <p className="text-sm font-bold text-slate-400 text-center mb-4">اختر نوع الرسالة للإرسال:</p>
+              
+              <button onClick={() => sendWhatsApp('BOOKING_CONFIRM', modal.data)} className="w-full p-4 bg-brand-500/10 border border-brand-500/20 rounded-2xl flex items-center gap-4 hover:bg-brand-500/20 transition-all group text-right">
+                 <div className="w-10 h-10 rounded-full bg-brand-500 text-white flex items-center justify-center shrink-0"><Check size={20}/></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">تأكيد الحجز</h4>
+                    <p className="text-[10px] text-slate-400">رسالة ترحيب وتفاصيل المواعيد والعربون</p>
+                 </div>
+              </button>
+
+              <button onClick={() => sendWhatsApp('PICKUP_READY', modal.data)} className="w-full p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center gap-4 hover:bg-blue-500/20 transition-all group text-right">
+                 <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center shrink-0"><Check size={20}/></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">التجهيز والاستلام</h4>
+                    <p className="text-[10px] text-slate-400">إشعار بجاهزية الفستان والمتبقي المالي</p>
+                 </div>
+              </button>
+
+              <button onClick={() => sendWhatsApp('RETURN_THANKS', modal.data)} className="w-full p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-4 hover:bg-emerald-500/20 transition-all group text-right">
+                 <div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0"><Check size={20}/></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">شكر بعد الإرجاع</h4>
+                    <p className="text-[10px] text-slate-400">رسالة شكر ووداع لطيفة</p>
+                 </div>
+              </button>
+
+              <button onClick={() => sendWhatsApp('PAYMENT_REMINDER', modal.data)} className="w-full p-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl flex items-center gap-4 hover:bg-orange-500/20 transition-all group text-right">
+                 <div className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center shrink-0"><AlertTriangle size={20}/></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">تذكير عام</h4>
+                    <p className="text-[10px] text-slate-400">تذكير بموعد أو دفعة مالية</p>
+                 </div>
+              </button>
            </div>
         </Modal>
       )}
@@ -335,8 +476,13 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
              const dr = dresses.find((x:any) => x.id === drId);
              const rp = Number(fd.get('rp')); const dep = calcState.egpAmount || Number(fd.get('dep'));
              
+             // Combined International Phone
+             const fullPhone = `${phoneCode}${localPhone}`.trim();
+
              const data: any = {
-               customerName: fd.get('cn'), customerPhone: fd.get('ph'), customerAddress: fd.get('ca'),
+               customerName: fd.get('cn'), 
+               customerPhone: fullPhone,
+               customerAddress: fd.get('ca'),
                dressId: drId, dressName: dr?.name || '', eventDate: fd.get('ed'), deliveryDate: fd.get('dd'),
                rentalPrice: rp, paidDeposit: dep, remainingToPay: rp - dep, notes: fd.get('notes'),
                status: modal.status || BookingStatus.PENDING, 
@@ -372,10 +518,33 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
 
              await executeSave(data);
            }} className="space-y-5">
-             <div className="grid grid-cols-2 gap-4">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                <Input label="اسم العروس" name="cn" defaultValue={modal.customerName} required />
-               <Input label="رقم الهاتف" name="ph" defaultValue={modal.customerPhone} required />
+               
+               {/* PHONE INPUT WITH COUNTRY CODE */}
+               <div className="space-y-2">
+                  <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">رقم الهاتف (واتساب)</label>
+                  <div className="flex gap-2" dir="ltr">
+                      <select 
+                        className="w-1/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none text-sm"
+                        value={phoneCode}
+                        onChange={(e) => setPhoneCode(e.target.value)}
+                      >
+                          {COUNTRY_CODES.map(c => (
+                              <option key={c.code} value={c.code}>{c.flag} {c.code}</option>
+                          ))}
+                      </select>
+                      <input 
+                        className="w-2/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none placeholder:text-slate-700"
+                        placeholder="10xxxxxxxx"
+                        value={localPhone}
+                        onChange={(e) => setLocalPhone(e.target.value)}
+                        required
+                      />
+                  </div>
+               </div>
              </div>
+             
              <Input label="العنوان" name="ca" defaultValue={modal.customerAddress} />
              
              <div className="grid grid-cols-2 gap-4">
@@ -455,6 +624,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
         </Modal>
       )}
 
+      {/* Other Modals (Validation, Conflict, Measure) - No Changes Needed */}
       {modal?.type === 'VALIDATION_WARNING' && (
         <Modal title="تنبيه هام" onClose={() => setModal(null)}>
             <div className="text-center space-y-6">

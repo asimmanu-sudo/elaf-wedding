@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Filter, Plus, CalendarDays, Clock, TrendingUp, ArrowDownCircle, DollarSign, LogOut, ArrowLeftRight, Wallet } from 'lucide-react';
+import { Filter, Plus, CalendarDays, Clock, TrendingUp, ArrowDownCircle, DollarSign, LogOut, Wallet } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { DressType, DressStatus, BookingStatus, SaleStatus } from '../types';
 import { Button, Input, Modal, Card } from '../components/UI';
@@ -46,32 +46,23 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
   const totalRentRemaining = useMemo(() => activeBookings.reduce((sum: number, b: any) => sum + (b.remainingToPay || 0), 0), [activeBookings]);
   const totalSaleRemaining = useMemo(() => activeSales.reduce((sum: number, s: any) => sum + (s.remainingFromBride || 0), 0), [activeSales]);
 
-  const futureRentals = useMemo(() => activeBookings.filter((b: any) => b.remainingToPay > 0).map((b: any) => ({
-     id: `fut_rent_${b.id}`, category: "مستحقات إيجار (مستقبلية)", amount: b.remainingToPay, type: 'INCOME', notes: `متبقي إيجار: ${b.customerName}`, date: b.deliveryDate, isFuture: true
-  })), [activeBookings]);
-
-  const futureSales = useMemo(() => activeSales.filter((s: any) => s.remainingFromBride > 0).map((s: any) => ({
-     id: `fut_sale_${s.id}`, category: "مستحقات تفصيل (مستقبلية)", amount: s.remainingFromBride, type: 'INCOME', notes: `متبقي تفصيل: ${s.brideName}`, date: s.expectedDeliveryDate, isFuture: true
-  })), [activeSales]);
-
+  // Clean Log Logic: Only Actual DB Records
   const filteredFinance = useMemo(() => {
-    let list = [...finance];
-    if (selectedCats.includes("مستحقات إيجار (مستقبلية)") || selectedCats.length === 0) list = [...list, ...futureRentals];
-    if (selectedCats.includes("مستحقات تفصيل (مستقبلية)") || selectedCats.length === 0) list = [...list, ...futureSales];
+    // 1. Filter out any "isFuture" items that might have been saved incorrectly, and stick to actual DB records
+    let list = finance.filter((f: any) => !f.isFuture);
 
-    return list.filter(f => {
+    return list.filter((f: any) => {
       const matchesQuery = (f.category || '').includes(query) || (f.notes || '').includes(query);
       const matchesDate = (!startDate || f.date >= startDate) && (!endDate || f.date <= endDate);
       const matchesCategory = selectedCats.length === 0 || selectedCats.includes(f.category);
       return matchesQuery && matchesDate && matchesCategory;
     }).sort((a: any, b: any) => b.date.localeCompare(a.date));
-  }, [finance, query, startDate, endDate, selectedCats, futureRentals, futureSales]);
+  }, [finance, query, startDate, endDate, selectedCats]);
 
   // ACCOUNTING TOTALS (Always based on EGP 'amount' field)
   const totals = useMemo(() => {
-    const actuals = filteredFinance.filter((f: any) => !f.isFuture);
-    const inc = actuals.filter((f: any) => f.type === 'INCOME').reduce((s: any, f: any) => s + f.amount, 0);
-    const exp = actuals.filter((f: any) => f.type === 'EXPENSE').reduce((s: any, f: any) => s + f.amount, 0);
+    const inc = filteredFinance.filter((f: any) => f.type === 'INCOME').reduce((s: any, f: any) => s + f.amount, 0);
+    const exp = filteredFinance.filter((f: any) => f.type === 'EXPENSE').reduce((s: any, f: any) => s + f.amount, 0);
     return { inc, exp, profit: inc - exp };
   }, [filteredFinance]);
 
@@ -103,40 +94,6 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
     setModal(null);
   };
 
-  const handleExchange = async (e: any) => {
-      e.preventDefault();
-      const fd = new FormData(e.currentTarget);
-      const fromCurr = fd.get('from_curr');
-      const toCurr = fd.get('to_curr');
-      const sellAmt = Number(fd.get('sell_amt'));
-      const buyAmt = Number(fd.get('buy_amt'));
-
-      if (wallets[fromCurr as keyof typeof wallets] < sellAmt) {
-          showToast('رصيد المحفظة لا يكفي', 'error');
-          return;
-      }
-
-      // Record 1: OUT (Sell)
-      // Note: amount=0 for Profit/Loss calc to avoid double counting, unless we track exchange P&L specifically. 
-      // Simplified: Just move cash. Bookkeeping for P&L is separate.
-      await cloudDb.add(COLLS.FINANCE, {
-          type: 'EXCHANGE_OUT', category: 'تحويل عملة (صادر)',
-          amount: 0, // No impact on EGP P&L
-          currency: fromCurr, currencyAmount: sellAmt,
-          notes: `بيع ${sellAmt} ${fromCurr}`, date: today
-      });
-
-      // Record 2: IN (Buy)
-      await cloudDb.add(COLLS.FINANCE, {
-          type: 'EXCHANGE_IN', category: 'تحويل عملة (وارد)',
-          amount: 0, // No impact on EGP P&L
-          currency: toCurr, currencyAmount: buyAmt,
-          notes: `شراء ${buyAmt} ${toCurr} (مقابل ${sellAmt} ${fromCurr})`, date: today
-      });
-
-      showToast('تم التحويل بنجاح'); setModal(null);
-  };
-
   const performance = useMemo(() => {
     return dresses.filter((d: any) => d.type === DressType.RENT).map((d: any) => {
       const bookingsForDress = bookings.filter((b: any) => b.dressId === d.id && b.status !== BookingStatus.CANCELLED);
@@ -153,7 +110,7 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
   const analysis = useMemo(() => {
       const expMap: Record<string, number> = {};
       const incMap: Record<string, number> = {};
-      filteredFinance.filter((f:any) => !f.isFuture).forEach((f: any) => {
+      filteredFinance.forEach((f: any) => {
           if (f.type === 'EXPENSE') expMap[f.category] = (expMap[f.category] || 0) + f.amount;
           else if (f.type === 'INCOME') incMap[f.category] = (incMap[f.category] || 0) + f.amount;
       });
@@ -231,7 +188,6 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
         {hasPerm('add_finance') && (
           <>
             <Button onClick={() => setModal({ type: 'ADD' })} className="flex-1 h-12"><Plus size={18}/> إضافة عملية</Button>
-            <Button onClick={() => setModal({ type: 'EXCHANGE' })} className="flex-1 h-12 bg-blue-500/10 text-blue-400 border-blue-500/20"><ArrowLeftRight size={18}/> تحويل عملة</Button>
             <Button onClick={() => setModal({ type: 'WITHDRAW' })} variant="danger" className="flex-1 h-12 bg-red-500/10 hover:bg-red-500 border-red-500/20 text-red-400"><LogOut size={18}/> سحب للمنزل</Button>
           </>
         )}
@@ -247,7 +203,8 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
               <div className="space-y-3">
                  <p className="text-[10px] font-black text-brand-500 uppercase tracking-widest px-4">تصفية حسب البند</p>
                  <div className="flex flex-wrap gap-2">
-                    {FINANCE_CATEGORIES.map(cat => (
+                    {/* Hide Future Categories from Filters */}
+                    {FINANCE_CATEGORIES.filter(c => !c.includes('(مستقبلية)')).map(cat => (
                       <button key={cat} onClick={() => toggleCategory(cat)} className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all border ${selectedCats.includes(cat) ? 'bg-brand-500 border-brand-500 text-white shadow-lg' : 'bg-slate-950 border-white/5 text-slate-500'}`}>{cat}</button>
                     ))}
                     {selectedCats.length > 0 && <button onClick={() => setSelectedCats([])} className="px-4 py-2 rounded-xl text-[11px] font-black text-red-500">مسح الكل</button>}
@@ -259,12 +216,12 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
 
       {subTab === 'logs' && (
         <div className="space-y-3">
-           {/* LOGS LIST ONLY - Cleaned up */}
+           {/* LOGS LIST ONLY - Cleaned up to show only actual records */}
            {filteredFinance.map((f: any) => (
-             <Card key={f.id} className={`!py-4 flex items-center justify-between group ${(f as any).isFuture ? 'opacity-70 border-dashed border-blue-500/30' : ''}`}>
+             <Card key={f.id} className={`!py-4 flex items-center justify-between group`}>
                <div className="flex items-center gap-4">
-                 <div className={`w-11 h-11 rounded-xl flex items-center justify-center border ${(f as any).isFuture ? 'bg-blue-500/10 border-blue-500/10 text-blue-500' : f.type === 'INCOME' || f.type === 'EXCHANGE_IN' ? 'bg-emerald-500/10 border-emerald-500/10 text-emerald-500' : 'bg-red-500/10 border-red-500/10 text-red-500'}`}>
-                     {(f as any).isFuture ? <Clock size={18}/> : f.type.includes('INCOME') || f.type.includes('IN') ? <TrendingUp size={18}/> : <ArrowDownCircle size={18}/>}
+                 <div className={`w-11 h-11 rounded-xl flex items-center justify-center border ${f.type === 'INCOME' || f.type === 'EXCHANGE_IN' ? 'bg-emerald-500/10 border-emerald-500/10 text-emerald-500' : 'bg-red-500/10 border-red-500/10 text-red-500'}`}>
+                     {f.type.includes('INCOME') || f.type.includes('IN') ? <TrendingUp size={18}/> : <ArrowDownCircle size={18}/>}
                  </div>
                  <div>
                      <h4 className="font-black text-sm text-white">{f.category}</h4>
@@ -272,10 +229,10 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
                  </div>
                </div>
                <div className="text-left flex flex-col items-end">
-                 <span className={`text-base font-black tracking-tighter ${(f as any).isFuture ? 'text-blue-400' : f.type.includes('IN') ? 'text-emerald-400' : 'text-red-400'}`}>
+                 <span className={`text-base font-black tracking-tighter ${f.type.includes('IN') ? 'text-emerald-400' : 'text-red-400'}`}>
                      {f.type.includes('IN') ? '+' : '-'}{formatCurrency(f.currencyAmount || f.amount)} <span className="text-[9px] uppercase opacity-70">{f.currency || 'EGP'}</span>
                  </span>
-                 {!((f as any).isFuture) && hasPerm('admin_reset') && (
+                 {hasPerm('admin_reset') && (
                      <button onClick={async () => { if(confirm('حذف السجل المالي؟')) cloudDb.delete(COLLS.FINANCE, f.id); }} className="text-[9px] text-red-500/50 mt-1 hover:text-red-500 transition-colors">حذف</button>
                  )}
                </div>
@@ -383,43 +340,9 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
                <Input label="المبلغ المراد سحبه (EGP)" name="amount" type="number" required />
                <Input name="notes" placeholder="ملاحظات (اختياري)" />
                <p className="text-xs text-slate-500 text-center px-4 leading-relaxed">
-                  تنبيه: يمكنك سحب الأرصدة المصرية السائلة فقط. لتحويل عملات أخرى، استخدم زر "تحويل عملة".
+                  تنبيه: يمكنك سحب الأرصدة المصرية السائلة فقط.
                </p>
                <Button variant="danger" className="w-full h-14 shadow-xl">تأكيد السحب</Button>
-            </form>
-         </Modal>
-      )}
-
-      {modal?.type === 'EXCHANGE' && (
-         <Modal title="تحويل عملة" onClose={() => setModal(null)}>
-            <form onSubmit={handleExchange} className="space-y-6">
-               <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                     <label className="text-[10px] font-black text-white uppercase px-2">من عملة (بيع)</label>
-                     <select name="from_curr" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 font-bold text-white">
-                        <option value="SDG">SDG (سوداني)</option>
-                        <option value="USD">USD (دولار)</option>
-                        <option value="EGP">EGP (مصري)</option>
-                     </select>
-                  </div>
-                  <div className="space-y-2">
-                     <label className="text-[10px] font-black text-white uppercase px-2">إلى عملة (شراء)</label>
-                     <select name="to_curr" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 font-bold text-white">
-                        <option value="EGP">EGP (مصري)</option>
-                        <option value="USD">USD (دولار)</option>
-                        <option value="SDG">SDG (سوداني)</option>
-                     </select>
-                  </div>
-               </div>
-               
-               <Input label="المبلغ المباع" name="sell_amt" type="number" required />
-               <Input label="المبلغ المستلم" name="buy_amt" type="number" required />
-               
-               <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-xs text-blue-300 font-bold">
-                  سيتم خصم المبلغ المباع من المحفظة الأولى، وإضافة المبلغ المستلم للمحفظة الثانية.
-               </div>
-
-               <Button className="w-full shadow-xl">إتمام التحويل</Button>
             </form>
          </Modal>
       )}
@@ -439,6 +362,7 @@ export default function FinanceView({ finance, dresses, users, bookings, sales, 
                  <label className="text-[11px] font-black text-white px-4 leading-none uppercase tracking-widest italic">التصنيف</label>
                  <select name="c" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-brand-500" onChange={(e: any)=>setModal({...modal, expType: e.target.value})} required>
                     <option value="">-- اختر التصنيف --</option>
+                    {/* Hide Future and Withdrawal Categories from Manual Add */}
                     {FINANCE_CATEGORIES.filter(c => !c.includes('مستقبلية') && !c.includes('سحب')).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                  </select>
               </div>

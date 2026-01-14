@@ -51,7 +51,21 @@ export function Card({ children, className = "", onClick, ...props }: any) {
   );
 }
 
-export function Input({ label, icon: Icon, ...props }: any) {
+// Utility to convert Eastern Arabic Numerals to Western
+const parseArabicNumbers = (str: string) => {
+  return str.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+};
+
+export function Input({ label, icon: Icon, onChange, ...props }: any) {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value;
+    if (val && /[٠-٩]/.test(val)) {
+       val = parseArabicNumbers(val);
+       e.target.value = val; // Update visual input immediately
+    }
+    if (onChange) onChange(e);
+  };
+
   return (
     <div className="w-full space-y-2">
       {label && <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">{label}</label>}
@@ -59,6 +73,7 @@ export function Input({ label, icon: Icon, ...props }: any) {
         {Icon && <Icon className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-brand-500 transition-colors" size={18} />}
         <input 
           className={`w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white focus:ring-2 focus:ring-brand-500/50 outline-none transition-all placeholder:text-slate-700 font-medium ${Icon ? 'pr-12' : ''}`}
+          onChange={handleChange}
           {...props} 
         />
       </div>

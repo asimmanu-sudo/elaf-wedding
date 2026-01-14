@@ -29,7 +29,8 @@ export const COLLS = {
     CUSTOMERS: 'customers',
     USERS: 'users',
     LOGS: 'audit_logs',
-    PERSONAL: 'personal_finance'
+    PERSONAL: 'personal_finance',
+    METADATA: 'metadata'
 };
 
 export const cloudDb = {

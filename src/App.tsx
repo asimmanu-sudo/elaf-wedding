@@ -22,7 +22,8 @@ import LifeBudgetView from './views/LifeBudgetView';
 import LogsView from './views/LogsView';
 import SettingsView from './views/SettingsView';
 
-// --- THEME CONFIGURATION (RGB CHANNELS FOR TAILWIND VARS) ---
+// --- THEME CONFIGURATION (RGB CHANNELS ONLY) ---
+// These values are injected into --color-brand-* and --color-base-*
 const THEMES: any = {
   default: {
     // Brand: Purple/Fuchsia (Default)
@@ -51,7 +52,7 @@ const THEMES: any = {
     '--color-base-950': '2 6 23',
   },
   warm_gold: {
-    // Brand: Rich Gold / Amber (Approximated RGBs from Hex)
+    // Brand: Rich Gold / Amber
     '--color-brand-50': '251 248 242',
     '--color-brand-100': '245 239 224',
     '--color-brand-200': '234 219 179',
@@ -63,7 +64,7 @@ const THEMES: any = {
     '--color-brand-800': '87 67 13',
     '--color-brand-900': '61 47 8',
     '--color-brand-950': '38 28 3',
-    // Base: Stone (Warm Gray / Brownish)
+    // Base: Stone (Warm Brownish Grey) - Maps to "slate" classes
     '--color-base-50': '250 250 249',
     '--color-base-100': '245 245 244',
     '--color-base-200': '231 229 228',
@@ -181,25 +182,45 @@ function AppContent() {
 
   if (!user) {
     return (
+      // LOGIN SCREEN: Using generic slate classes that map to variables
       <div 
         className="min-h-screen flex flex-col items-center justify-center p-8 animate-fade-in no-print bg-slate-950 bg-[url('/store-bg.jpg')] bg-cover bg-center relative"
+        style={themeStyles as React.CSSProperties}
       >
-        <div className={`absolute inset-0 backdrop-blur-[2px] ${theme === 'warm_gold' ? 'bg-stone-950/85' : 'bg-slate-950/90'}`}></div> {/* Dynamic Overlay */}
+        {/* Overlay: Uses bg-slate-950 which becomes Warm Brown in Gold Theme */}
+        <div className="absolute inset-0 backdrop-blur-[2px] bg-slate-950/85"></div> 
         
         <div className="relative z-10 flex flex-col items-center w-full max-w-sm">
           <img src="/Logo.png" alt="Logo" className="w-44 mb-10 object-contain drop-shadow-2xl" />
-          <div className={`w-full backdrop-blur-xl border border-white/10 p-10 rounded-[3.5rem] shadow-2xl ${theme === 'warm_gold' ? 'bg-[#1c1917]/70' : 'bg-slate-900/60'}`}>
+          <div className="w-full backdrop-blur-xl border border-white/10 p-10 rounded-[3.5rem] shadow-2xl bg-slate-900/60">
             <form onSubmit={(e: any) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
               const foundUser = users.find((x: any) => x.username === fd.get('u') && x.password === fd.get('p'));
-              if (foundUser) { setUser(foundUser); } else { showToast('بيانات الدخول غير صحيحة', 'error'); }
+              if (foundUser) { 
+                setUser(foundUser); 
+                setActiveTab('home'); // Ensure we start at home
+              } else { 
+                showToast('بيانات الدخول غير صحيحة', 'error'); 
+              }
             }} className="space-y-6">
-              <Input name="u" placeholder="اسم المستخدم" required className="!bg-black/40 !border-white/10 placeholder:text-white/50" />
-              <Input name="p" type="password" placeholder="كلمة المرور" required className="!bg-black/40 !border-white/10 placeholder:text-white/50" />
-              <Button className={`w-full h-16 text-lg mt-6 text-white border-none ${theme === 'warm_gold' ? 'bg-[#D4AF37] hover:bg-[#B89628] shadow-[#D4AF37]/20' : 'bg-brand-600 hover:bg-brand-500 shadow-brand-500/20'}`}>دخول النظام</Button>
+              <Input name="u" placeholder="اسم المستخدم" required className="!bg-slate-950/50 !border-white/10 placeholder:text-white/50" />
+              <Input name="p" type="password" placeholder="كلمة المرور" required className="!bg-slate-950/50 !border-white/10 placeholder:text-white/50" />
+              {/* Button: bg-brand-600 becomes Gold or Purple automatically */}
+              <Button className="w-full h-16 text-lg mt-6 text-white border-none bg-brand-600 hover:bg-brand-500 shadow-brand-500/20">دخول النظام</Button>
             </form>
           </div>
+        </div>
+        
+        <div className="fixed bottom-24 left-4 right-4 z-[2000] space-y-2 pointer-events-none">
+          {toasts.map((t: any) => (
+            <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-3xl shadow-2xl border pointer-events-auto animate-slide-up mx-auto max-sm ${
+              t.type === 'error' ? 'bg-red-950/90 border-red-500/50 text-red-100' : t.type === 'warning' ? 'bg-orange-950/90 border-orange-500/50 text-orange-100' : 'bg-emerald-950/90 border-emerald-500/50 text-emerald-100'
+            }`}>
+              {t.type === 'error' ? <AlertTriangle size={20}/> : <CheckCircle size={20}/>}
+              <span className="font-bold text-sm">{t.msg}</span>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -236,8 +257,9 @@ function AppContent() {
       `}</style>
       
       {/* Root Application Wrapper with Dynamic Variables */}
+      {/* NOTE: We only use bg-slate-950. The CSS variables defined in style={} transform "slate" into "stone" automatically */}
       <div 
-        className={`h-full flex flex-col text-slate-100 overflow-hidden no-print ${isIOS ? 'ios-style' : 'android-style'} ${theme === 'warm_gold' ? 'bg-stone-950' : 'bg-slate-950'}`} 
+        className="h-full flex flex-col text-slate-100 overflow-hidden no-print bg-slate-950" 
         dir="rtl"
         style={themeStyles as React.CSSProperties}
       >
