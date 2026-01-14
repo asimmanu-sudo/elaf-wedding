@@ -90,22 +90,45 @@ export const MEASUREMENT_FIELDS = [
   { id: 'materials', label: 'الخامة المستخدمة' },
 ];
 
-export const PERMISSIONS_LIST = [
-  { id: 'view_home', label: 'مشاهدة الرئيسية' },
-  { id: 'view_rent_dresses', label: 'إدارة فساتين الإيجار' },
-  { id: 'add_rent_dress', label: 'إضافة فستان إيجار' },
-  { id: 'edit_rent_dress', label: 'تعديل فستان إيجار' },
-  { id: 'delete_rent_dress', label: 'حذف فستان إيجار' },
-  { id: 'view_rent_bookings', label: 'إدارة حجوزات الإيجار' },
-  { id: 'add_booking', label: 'تسجيل حجز جديد' },
-  { id: 'view_sale_orders', label: 'إدارة فساتين البيع' },
-  { id: 'add_sale', label: 'تسجيل طلب بيع' },
-  { id: 'view_factory', label: 'تعاملات المصنع' },
-  { id: 'view_delivery', label: 'التسليم والإرجاع' },
-  { id: 'view_customers', label: 'سجل العملاء' },
-  { id: 'view_finance', label: 'مشاهدة المالية' },
-  { id: 'add_finance', label: 'إضافة عمليات مالية' },
-  { id: 'view_logs', label: 'سجل الحركة' },
-  { id: 'view_personal_budget', label: 'إدارة ميزانية البيت' },
-  { id: 'admin_reset', label: 'تصفير النظام (Admin)' },
+export const PERMISSIONS_CATEGORIES = [
+  {
+    title: "إدارة الفساتين والمخزون",
+    perms: [
+      { id: 'view_rent_dresses', label: 'عرض الفساتين' },
+      { id: 'add_rent_dress', label: 'إضافة وتعديل فستان' },
+      { id: 'change_dress_status', label: 'تغيير الحالة (غسيل/صيانة)' },
+      { id: 'delete_rent_dress', label: 'حذف فساتين (خطر)' },
+    ]
+  },
+  {
+    title: "الحجوزات والمبيعات",
+    perms: [
+      { id: 'view_rent_bookings', label: 'عرض الحجوزات' },
+      { id: 'add_booking', label: 'إنشاء وتعديل حجز' },
+      { id: 'view_sale_orders', label: 'عرض طلبات البيع/التفصيل' },
+      { id: 'add_sale', label: 'إضافة طلب بيع جديد' },
+      { id: 'view_customers', label: 'سجل العملاء' },
+      { id: 'view_delivery', label: 'التسليم والاستلام' },
+      { id: 'view_factory', label: 'متابعة المصنع' },
+    ]
+  },
+  {
+    title: "المالية والخزنة (حساس)",
+    perms: [
+      { id: 'view_finance', label: 'عرض السجلات المالية' },
+      { id: 'add_finance', label: 'إضافة عملية (مصروف/إيراد)' },
+      { id: 'view_profits', label: 'الاطلاع على الأرباح' },
+      { id: 'view_personal_budget', label: 'ميزانية البيت (Admin)' },
+      { id: 'delete_finance', label: 'حذف سجلات مالية (خطر)' },
+    ]
+  },
+  {
+    title: "النظام والإعدادات",
+    perms: [
+      { id: 'manage_users', label: 'إدارة الموظفين' },
+      { id: 'view_logs', label: 'سجل النشاطات' },
+      { id: 'view_settings', label: 'الإعدادات العامة' },
+      { id: 'admin_reset', label: 'تصفير النظام (دمار شامل)' },
+    ]
+  }
 ];

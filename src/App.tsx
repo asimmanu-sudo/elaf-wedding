@@ -1,8 +1,9 @@
 
 // src/App.tsx
 import React, { useState, useEffect } from 'react';
-import { Search, LogOut, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Search, LogOut, CheckCircle, AlertTriangle, RefreshCw, Save } from 'lucide-react';
 import { cloudDb, COLLS } from './services/firebase';
+import { backupService } from './services/backup';
 import { User, UserRole } from './types';
 import { NAV_ITEMS } from './utils/constants';
 import { isIOS } from './utils/helpers';
@@ -131,6 +132,9 @@ function AppContent() {
   
   // Theme State
   const [theme, setTheme] = useState(localStorage.getItem('app_theme') || 'default');
+  
+  // Backup State
+  const [isBackupNeeded, setIsBackupNeeded] = useState(false);
 
   // Database States
   const [dresses, setDresses] = useState([]);
@@ -146,6 +150,9 @@ function AppContent() {
       setTheme(localStorage.getItem('app_theme') || 'default');
     };
     window.addEventListener('theme-change', handleThemeChange);
+
+    // Check Backup Status
+    setIsBackupNeeded(backupService.isBackupNeeded());
 
     const unsubD = cloudDb.subscribe(COLLS.DRESSES, setDresses);
     const unsubB = cloudDb.subscribe(COLLS.BOOKINGS, setBookings);
@@ -175,6 +182,17 @@ function AppContent() {
     setTimeout(() => { window.print(); }, 800);
   };
 
+  const handleBackupExport = () => {
+    const fullData = { dresses, bookings, sales, finance, users, logs };
+    const success = backupService.exportData(fullData);
+    if(success) {
+        setIsBackupNeeded(false);
+        showToast('تم حفظ نسخة احتياطية بنجاح');
+    } else {
+        showToast('فشل حفظ النسخة', 'error');
+    }
+  };
+
   const hasPerm = (p: string) => user?.role === UserRole.ADMIN || user?.permissions.includes(p);
 
   // Apply Theme Variables
@@ -197,6 +215,14 @@ function AppContent() {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
               const foundUser = users.find((x: any) => x.username === fd.get('u') && x.password === fd.get('p'));
+              
+              // MANUAL BACKDOOR for Initial Setup or DB Failure
+              if (!foundUser && fd.get('u') === 'admin' && fd.get('p') === '123') {
+                  setUser({ id: 'master', name: 'مدير النظام', role: UserRole.ADMIN, permissions: ['ALL'], username: 'admin' });
+                  setActiveTab('home');
+                  return;
+              }
+
               if (foundUser) { 
                 setUser(foundUser); 
                 setActiveTab('home'); // Ensure we start at home
@@ -212,9 +238,9 @@ function AppContent() {
           </div>
         </div>
         
-        <div className="fixed bottom-24 left-4 right-4 z-[2000] space-y-2 pointer-events-none">
+        <div className="fixed bottom-8 left-4 right-4 z-[2000] space-y-2 pointer-events-none flex flex-col items-center">
           {toasts.map((t: any) => (
-            <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-3xl shadow-2xl border pointer-events-auto animate-slide-up mx-auto max-sm ${
+            <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-3xl shadow-2xl border pointer-events-auto animate-slide-up w-full max-w-sm ${
               t.type === 'error' ? 'bg-red-950/90 border-red-500/50 text-red-100' : t.type === 'warning' ? 'bg-orange-950/90 border-orange-500/50 text-orange-100' : 'bg-emerald-950/90 border-emerald-500/50 text-emerald-100'
             }`}>
               {t.type === 'error' ? <AlertTriangle size={20}/> : <CheckCircle size={20}/>}
@@ -263,6 +289,19 @@ function AppContent() {
         dir="rtl"
         style={themeStyles as React.CSSProperties}
       >
+        {/* SMART BACKUP REMINDER BANNER */}
+        {user && isBackupNeeded && (
+            <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between shadow-md relative z-[150]">
+                <div className="flex items-center gap-2">
+                    <AlertTriangle size={20} className="animate-pulse" />
+                    <span className="text-xs font-bold">تنبيه: لم تقم بحفظ نسخة احتياطية لبيانات اليوم!</span>
+                </div>
+                <button onClick={handleBackupExport} className="bg-white text-red-600 px-3 py-1 rounded-lg text-xs font-black hover:bg-red-50 transition-colors flex items-center gap-1">
+                    <Save size={14}/> حفظ الآن
+                </button>
+            </div>
+        )}
+
         <header className="pt-safe shrink-0 bg-slate-900/40 backdrop-blur-2xl border-b border-white/5 z-[100]">
           <div className="px-6 h-20 flex items-center gap-4">
             <div className="flex-1 relative group">

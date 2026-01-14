@@ -3,12 +3,12 @@ import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: "AIzaSyCmMFroJp5aHg3HGhrdn8T-lf08YIiLxdU",
+  authDomain: "elaf-for-wedding-dresses.firebaseapp.com",
+  projectId: "elaf-for-wedding-dresses",
+  storageBucket: "elaf-for-wedding-dresses.firebasestorage.app",
+  messagingSenderId: "177838569788",
+  appId: "1:177838569788:web:b5cb0bed7a37776daa8639",
 };
 
 let db: any;

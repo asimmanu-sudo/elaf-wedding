@@ -1,16 +1,22 @@
 
-import React, { useState, useEffect } from 'react';
-import { Users, Key, Edit, UserPlus, RotateCcw, BarChart3, AlertTriangle, Palette, Check, Wallet, Calculator, MessageCircle, Save } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Users, Key, Edit, UserPlus, RotateCcw, BarChart3, AlertTriangle, Palette, Check, Wallet, Calculator, MessageCircle, Save, ShieldCheck, Download, Upload, FileJson, Loader } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
+import { backupService } from '../services/backup';
 import { UserRole, BookingStatus } from '../types';
 import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
-import { PERMISSIONS_LIST } from '../utils/constants';
+import { PERMISSIONS_CATEGORIES } from '../utils/constants';
 import { today, formatCurrency, DEFAULT_WA_TEMPLATES } from '../utils/helpers';
 
 export default function SettingsView({ user, users, bookings, sales, finance, dresses, hasPerm, showToast, addLog, onThemeChange }: any) {
   const [modal, setModal] = useState<any>(null);
   const [currentTheme, setCurrentTheme] = useState(localStorage.getItem('app_theme') || 'default');
   const [waConfig, setWaConfig] = useState<any>(null);
+
+  // Backup & Restore State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [restoreFile, setRestoreFile] = useState<any>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   // State for Opening Balance Wizard
   const [openingState, setOpeningState] = useState({ egp: 0, sdg: 0, rate: 50 });
@@ -105,6 +111,82 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
     showToast(`تم تحديث عداد ${updatedCount} فستان`);
     addLog('صيانة', `إعادة احتساب عدادات الإيجار. تم تحديث ${updatedCount} سجل.`);
     setModal(null);
+  };
+
+  // --- BACKUP & RESTORE LOGIC ---
+  const handleBackupNow = () => {
+      // Gather current data from props
+      const fullData = { dresses, bookings, sales, finance, users, logs: [] }; // logs usually fetched separately or big, maybe omit or fetch fresh if needed
+      const success = backupService.exportData(fullData);
+      if(success) showToast('تم تحميل النسخة الاحتياطية');
+      else showToast('فشل التحميل', 'error');
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          try {
+              const json = JSON.parse(event.target?.result as string);
+              // Basic Validation
+              if (!json.dresses && !json.bookings) {
+                  throw new Error("Invalid Format");
+              }
+              setRestoreFile(json);
+              setModal({ type: 'CONFIRM_RESTORE_FILE' });
+          } catch (err) {
+              showToast('الملف غير صالح أو تالف', 'error');
+          }
+      };
+      reader.readAsText(file);
+      // Reset input
+      e.target.value = '';
+  };
+
+  const executeRestoreFromFile = async () => {
+      if (!restoreFile) return;
+      setIsRestoring(true);
+      setModal(null); // Close confirmation, show loading overlay if we implemented one, or just wait.
+
+      try {
+          const collectionsMap: any = {
+              dresses: COLLS.DRESSES,
+              bookings: COLLS.BOOKINGS,
+              sales: COLLS.SALES,
+              finance: COLLS.FINANCE,
+              users: COLLS.USERS,
+              logs: COLLS.LOGS
+          };
+
+          let totalRestored = 0;
+
+          for (const key of Object.keys(collectionsMap)) {
+              const dataArray = restoreFile[key];
+              if (Array.isArray(dataArray)) {
+                  for (const item of dataArray) {
+                      if (item.id) {
+                          // Upsert: Update if exists, create if not (with specific ID)
+                          await cloudDb.update(collectionsMap[key], item.id, item);
+                          totalRestored++;
+                      }
+                  }
+              }
+          }
+
+          addLog('استعادة نسخة', `تم استعادة النظام من ملف. السجلات المعالجة: ${totalRestored}`);
+          showToast(`تمت الاستعادة بنجاح (${totalRestored} سجل)`);
+          
+          setTimeout(() => {
+              window.location.reload();
+          }, 1500);
+
+      } catch (err) {
+          console.error(err);
+          showToast('حدث خطأ أثناء الاستعادة', 'error');
+          setIsRestoring(false);
+      }
   };
 
   // --- OPENING BALANCE WIZARD LOGIC ---
@@ -236,6 +318,56 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
 
        {hasPerm('admin_reset') && (
          <div className="space-y-10">
+            {/* BACKUP & RESTORE CENTER */}
+            <Card className="border-brand-500/20 bg-brand-900/5">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-full bg-brand-500 flex items-center justify-center text-white shadow-lg shadow-brand-500/20">
+                        <ShieldCheck size={22} />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-black text-white">أمان البيانات والنسخ الاحتياطي</h3>
+                        <p className="text-[10px] text-slate-400 font-bold">Backup & Restore Center</p>
+                    </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button 
+                        onClick={handleBackupNow}
+                        className="flex flex-col items-center justify-center p-6 bg-slate-900 border border-white/5 rounded-3xl hover:bg-slate-800 hover:border-brand-500/30 transition-all group"
+                    >
+                        <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-500 mb-3 group-hover:scale-110 transition-transform">
+                            <Download size={28} />
+                        </div>
+                        <h4 className="font-black text-white text-sm">حفظ نسخة احتياطية الآن</h4>
+                        <p className="text-[10px] text-slate-500 mt-1">تنزيل ملف JSON على جهازك</p>
+                    </button>
+
+                    <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex flex-col items-center justify-center p-6 bg-slate-900 border border-white/5 rounded-3xl hover:bg-slate-800 hover:border-orange-500/30 transition-all group relative overflow-hidden"
+                    >
+                        {isRestoring && (
+                            <div className="absolute inset-0 bg-slate-950/90 z-20 flex flex-col items-center justify-center">
+                                <Loader size={32} className="text-brand-500 animate-spin mb-2"/>
+                                <span className="text-xs font-bold text-white blink">جاري استعادة البيانات...</span>
+                            </div>
+                        )}
+                        <input 
+                            type="file" 
+                            accept=".json" 
+                            ref={fileInputRef} 
+                            className="hidden" 
+                            onChange={handleFileSelect}
+                        />
+                        <div className="w-14 h-14 bg-orange-500/10 rounded-2xl flex items-center justify-center text-orange-500 mb-3 group-hover:scale-110 transition-transform">
+                            <Upload size={28} />
+                        </div>
+                        <h4 className="font-black text-white text-sm">استعادة البيانات من ملف</h4>
+                        <p className="text-[10px] text-slate-500 mt-1">تحديث قاعدة البيانات بملف سابق</p>
+                    </button>
+                </div>
+            </Card>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(users as any[]).map((u: any) => (
                 <Card key={u.id} className="flex justify-between items-center group">
@@ -282,6 +414,18 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
        )}
 
        {/* CONFIRMATION MODALS */}
+       {modal?.type === 'CONFIRM_RESTORE_FILE' && (
+         <ConfirmModal 
+           title="استعادة البيانات"
+           msg="تحذير: ستقوم هذه العملية بدمج وتحديث البيانات الحالية بالبيانات الموجودة في الملف. هل أنت متأكد تماماً من صحة الملف المختار؟"
+           onConfirm={executeRestoreFromFile}
+           onCancel={() => { setModal(null); setRestoreFile(null); }}
+           confirmText="نعم، ابدأ الاستعادة"
+           variant="danger"
+           icon={FileJson}
+         />
+       )}
+
        {modal?.type === 'CONFIRM_RESET' && (
          <ConfirmModal 
            title="تصفير النظام"
@@ -426,14 +570,25 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
                 <Input label="الاسم الكامل" name="n" defaultValue={modal.name} required />
                 <Input label="اسم المستخدم" name="u" defaultValue={modal.username} required />
               </div>
-              <div className="grid grid-cols-2 gap-3 bg-slate-950/50 p-6 rounded-3xl border border-white/5 max-h-[40vh] overflow-y-auto custom-scrollbar italic">
-                  {(PERMISSIONS_LIST as any[]).map((p: any) => (
-                    <label key={p.id} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 transition-colors cursor-pointer border border-transparent hover:border-white/5">
-                      <input type="checkbox" value={p.id} defaultChecked={modal.permissions?.includes(p.id)} className="w-6 h-6 accent-brand-500 rounded-lg shadow-sm" />
-                      <span className="text-[13px] font-bold text-surface-200 uppercase tracking-widest leading-none">{p.label}</span>
-                    </label>
+              
+              <div className="bg-slate-950/50 p-6 rounded-3xl border border-white/5 max-h-[50vh] overflow-y-auto custom-scrollbar">
+                  {PERMISSIONS_CATEGORIES.map((cat, idx) => (
+                    <div key={idx} className="mb-6 last:mb-0">
+                      <h4 className="text-[11px] font-black text-brand-500 uppercase tracking-widest mb-3 border-b border-white/5 pb-2">
+                        {cat.title}
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {cat.perms.map(p => (
+                          <label key={p.id} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 transition-colors cursor-pointer border border-transparent hover:border-white/5 bg-slate-900/50">
+                            <input type="checkbox" value={p.id} defaultChecked={modal.permissions?.includes(p.id)} className="w-5 h-5 accent-brand-500 rounded-lg shadow-sm" />
+                            <span className="text-[12px] font-bold text-surface-200 leading-none pt-0.5">{p.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   ))}
               </div>
+
               <Button className="w-full !rounded-2xl h-16 shadow-xl uppercase italic tracking-widest">حفظ بيانات الموظف</Button>
             </form>
          </Modal>
