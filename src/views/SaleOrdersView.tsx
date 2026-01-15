@@ -6,12 +6,17 @@ import { SaleStatus, FactoryPaymentStatus } from '../types';
 import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
 import { today, formatCurrency, getWhatsAppLink, DEFAULT_WA_TEMPLATES, WATemplateKey } from '../utils/helpers';
 import { PAYMENT_METHODS, MEASUREMENT_FIELDS, COUNTRY_CODES } from '../utils/constants';
+import PrintPreviewModal from '../components/PrintPreviewModal';
 
 export default function SaleOrdersView({ sales, finance, query, hasPerm, showToast, addLog, onPrint }: any) {
   const [subTab, setSubTab] = useState<'current' | 'past'>('current');
   const [modal, setModal] = useState<any>(null);
   const [pendingSave, setPendingSave] = useState<any>(null);
   
+  // Print Preview State
+  const [printModalData, setPrintModalData] = useState<any>(null);
+  const [printModalMode, setPrintModalMode] = useState<'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE'>('DEPOSIT');
+
   // Custom WA Templates State
   const [waTemplates, setWaTemplates] = useState(DEFAULT_WA_TEMPLATES);
 
@@ -171,6 +176,12 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
       });
   };
 
+  // Helper to open print modal
+  const openPrintModal = (data: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE') => {
+      setPrintModalData(data);
+      setPrintModalMode(mode);
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="flex bg-slate-900/60 p-1.5 rounded-2xl border border-white/5 sticky top-0 z-50 backdrop-blur-xl shadow-lg">
@@ -209,7 +220,8 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
                   {hasMeasurements ? <Check size={16}/> : <Ruler size={16}/>}
                   {hasMeasurements ? 'تم أخذ المقاسات' : 'لم يتم تسجيل المقاسات'}
                 </Button>
-                <Button variant="ghost" onClick={() => onPrint(s, 'DEPOSIT')} className="!w-12 !h-12 !p-0 text-brand-400"><Printer size={18}/></Button>
+                {/* Print button updated to open preview */}
+                <Button variant="ghost" onClick={() => openPrintModal(s, 'DEPOSIT')} className="!w-12 !h-12 !p-0 text-brand-400"><Printer size={18}/></Button>
                 <Button variant="ghost" onClick={() => openModal('EDIT', s)} className="!w-12 !h-12 !p-0 text-surface-500"><Edit size={18}/></Button>
                 <Button variant="ghost" onClick={() => handleDelete(s)} className="!w-12 !h-12 !p-0 text-red-400"><Trash2 size={18}/></Button>
               </div>
@@ -264,6 +276,8 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
       
       {(modal?.type === 'ADD' || modal?.type === 'EDIT') && (
         <Modal title={modal.type === 'ADD' ? 'طلب تفصيل' : 'تعديل تفصيل'} onClose={() => setModal(null)} size="lg">
+           {/* ... Form ... */}
+           {/* (No internal changes to form logic needed, only listing it for context) */}
           <form onSubmit={async (e: any) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
@@ -297,7 +311,6 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input label="اسم العروس" name="n" defaultValue={modal.brideName} required />
               
-              {/* PHONE INPUT WITH COUNTRY CODE */}
                <div className="space-y-2">
                   <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">رقم الهاتف (واتساب)</label>
                   <div className="flex gap-2" dir="ltr">
@@ -418,10 +431,23 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
             <textarea name="orderNotes" placeholder="ملاحظات الشرح الإضافي..." defaultValue={modal.measurements?.orderNotes} className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-6 text-white font-bold h-32 outline-none focus:ring-2 focus:ring-brand-500 transition-all" />
             <div className="flex gap-4">
               <Button className="flex-1 !rounded-2xl">حفظ المقاسات</Button>
-              <Button type="button" onClick={() => onPrint(modal, 'SIZES')} variant="ghost" className="!rounded-2xl"><Printer size={20}/></Button>
+              <Button type="button" onClick={() => openPrintModal(modal, 'SIZES')} variant="ghost" className="!rounded-2xl"><Printer size={20}/></Button>
             </div>
           </form>
         </Modal>
+      )}
+
+      {/* PRINT PREVIEW MODAL */}
+      {printModalData && (
+          <PrintPreviewModal 
+            data={printModalData} 
+            mode={printModalMode} 
+            onClose={() => setPrintModalData(null)}
+            onPrint={(d, m) => {
+                onPrint(d, m); // Call global print logic (hides UI, shows print div)
+                setPrintModalData(null); // Close modal
+            }}
+          />
       )}
     </div>
   );

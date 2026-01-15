@@ -1,12 +1,23 @@
 
 import React, { useState, useMemo } from 'react';
-import { PieChart, AlertOctagon, MessageCircle, ArrowLeft } from 'lucide-react';
-import { Modal, Card, Button } from '../components/UI';
+import { PieChart, AlertOctagon, MessageCircle, Calculator, RefreshCw, CheckCircle, DollarSign } from 'lucide-react';
+import { Modal, Card, Button, Input } from '../components/UI';
 import { BookingStatus, DressStatus, SaleStatus } from '../types';
+import { cloudDb, COLLS } from '../services/firebase';
 import { today, formatCurrency } from '../utils/helpers';
+import { PAYMENT_METHODS } from '../utils/constants';
 
 export default function HomeView({ dresses, bookings, sales }: any) {
   const [activeList, setActiveList] = useState<any>(null);
+  const [modal, setModal] = useState<any>(null);
+
+  // SMART CALCULATION STATE
+  const [calcState, setCalcState] = useState({ 
+    currency: 'EGP', 
+    egpAmount: 0, 
+    foreignAmount: 0, 
+    rate: 0 
+  });
   
   const weekLater = useMemo(() => {
     const d = new Date(); d.setDate(d.getDate() + 7);
@@ -66,9 +77,104 @@ export default function HomeView({ dresses, bookings, sales }: any) {
     return debts.sort((a: any, b: any) => a.date.localeCompare(b.date));
   }, [bookings, sales]);
 
-  const handleWhatsApp = (item: any) => {
+  const handleWhatsApp = (e: React.MouseEvent, item: any) => {
+      e.stopPropagation();
       const msg = `مرحباً مدام ${item.name}،%0aنتمنى أن تكوني بخير.%0aهذا تذكير بوجود متبقي مالي بقيمة *${formatCurrency(item.amount)}* %0aعلى حساب ${item.type === 'RENT' ? 'إيجار فستان' : 'طلب تفصيل'} (${item.item}).%0aيرجى التكرم بالسداد في أقرب وقت.%0aشكراً لاختيارك إيلاف.`;
       window.open(`https://wa.me/2${item.phone}?text=${msg}`, '_blank');
+  };
+
+  // --- PAYMENT LOGIC ---
+
+  const openPayModal = (item: any) => {
+      setCalcState({ currency: 'EGP', egpAmount: item.amount, foreignAmount: 0, rate: 0 });
+      setModal({ type: 'PAY_DEBT', item });
+  };
+
+  const handlePaymentMethodChange = (pm: string) => {
+      let curr = 'EGP';
+      if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
+      else if (pm.includes('دولار') || pm.includes('Western') || pm.includes('USD')) curr = 'USD';
+      
+      setCalcState(prev => ({ ...prev, currency: curr, rate: 0, foreignAmount: 0 }));
+  };
+
+  const handleEgpChange = (val: number) => {
+      setCalcState(prev => {
+          if (prev.rate === 0) return { ...prev, egpAmount: val };
+          let newForeign = 0;
+          if (prev.currency === 'SDG') {
+              newForeign = val * prev.rate;
+          } else {
+              newForeign = val / prev.rate;
+          }
+          return { ...prev, egpAmount: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
+      });
+  };
+
+  const handleRateChange = (val: number) => {
+      setCalcState(prev => {
+          let newForeign = 0;
+          if (prev.currency === 'SDG') {
+              newForeign = prev.egpAmount * val;
+          } else {
+              newForeign = val > 0 ? prev.egpAmount / val : 0;
+          }
+          return { ...prev, rate: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
+      });
+  };
+
+  const handleForeignChange = (val: number) => {
+      setCalcState(prev => {
+          let newRate = 0;
+          if (prev.egpAmount > 0) {
+              if (prev.currency === 'SDG') {
+                  newRate = val / prev.egpAmount;
+              } else {
+                  newRate = val > 0 ? prev.egpAmount / val : 0;
+              }
+          }
+          return { ...prev, foreignAmount: val, rate: parseFloat(newRate.toFixed(4)) };
+      });
+  };
+
+  const handlePayConfirm = async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      const item = modal.item;
+      const paidNow = calcState.egpAmount;
+      
+      if (paidNow <= 0 || paidNow > item.amount) {
+          alert('قيمة غير صحيحة (أكبر من المستحق أو صفر)');
+          return;
+      }
+
+      const newRemaining = item.amount - paidNow;
+      const collection = item.type === 'RENT' ? COLLS.BOOKINGS : COLLS.SALES;
+      
+      // 1. Add Finance Record
+      await cloudDb.add(COLLS.FINANCE, {
+          amount: paidNow,
+          type: 'INCOME',
+          category: item.type === 'RENT' ? 'تحصيل متبقي (إيجار)' : 'تحصيل متبقي (تفصيل)',
+          notes: `سداد متعثرات ${item.type === 'RENT' ? 'إيجار' : 'تفصيل'} للعميلة ${item.name} (${item.item})`,
+          date: today,
+          relatedId: item.id,
+          currency: calcState.currency,
+          currencyAmount: calcState.currency !== 'EGP' ? calcState.foreignAmount : paidNow,
+          exchangeRate: calcState.currency !== 'EGP' ? calcState.rate : 1
+      });
+
+      // 2. Update Document
+      const updateData: any = {};
+      if (item.type === 'RENT') {
+          updateData.remainingToPay = newRemaining;
+          // Note: paidDeposit tracks the *initial* deposit. We assume remainingToPay is the source of truth for debt.
+      } else {
+          updateData.remainingFromBride = newRemaining;
+      }
+
+      await cloudDb.update(collection, item.id, updateData);
+      
+      setModal(null);
   };
 
   return (
@@ -101,7 +207,11 @@ export default function HomeView({ dresses, bookings, sales }: any) {
 
               <div className="space-y-3 relative z-10 max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
                   {badDebts.map((item: any) => (
-                      <div key={item.id} className="flex items-center justify-between p-4 bg-slate-900/80 border border-red-500/10 rounded-2xl hover:border-red-500/30 transition-colors group">
+                      <div 
+                        key={item.id} 
+                        onClick={() => openPayModal(item)}
+                        className="flex items-center justify-between p-4 bg-slate-900/80 border border-red-500/10 rounded-2xl hover:border-red-500/30 transition-all group cursor-pointer hover:bg-slate-900"
+                      >
                           <div>
                               <div className="flex items-center gap-2">
                                   <p className="font-black text-white text-sm">{item.name}</p>
@@ -116,12 +226,12 @@ export default function HomeView({ dresses, bookings, sales }: any) {
                           
                           <div className="flex items-center gap-3">
                               <div className="text-left">
-                                  <p className="text-sm font-black text-red-400">{formatCurrency(item.amount)}</p>
+                                  <p className="text-sm font-black text-red-400 group-hover:scale-110 transition-transform">{formatCurrency(item.amount)}</p>
                                   <p className="text-[9px] text-red-500/50 font-bold uppercase tracking-widest">مستحق</p>
                               </div>
                               <button 
-                                onClick={() => handleWhatsApp(item)}
-                                className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-all shadow-lg"
+                                onClick={(e) => handleWhatsApp(e, item)}
+                                className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-all shadow-lg border border-emerald-500/20"
                                 title="مطالبة عبر واتساب"
                               >
                                   <MessageCircle size={18} />
@@ -131,6 +241,78 @@ export default function HomeView({ dresses, bookings, sales }: any) {
                   ))}
               </div>
           </div>
+      )}
+
+      {/* Pay Debt Modal */}
+      {modal?.type === 'PAY_DEBT' && (
+        <Modal title="سداد دين متعثر" onClose={() => setModal(null)} size="sm">
+            <form onSubmit={handlePayConfirm} className="space-y-6">
+                {/* Header Info */}
+                <div className="text-center p-4 bg-red-500/10 rounded-2xl border border-red-500/20">
+                    <p className="text-sm font-bold text-white mb-1">{modal.item.name}</p>
+                    <p className="text-[10px] text-slate-400 mb-2">{modal.item.item} ({modal.item.type === 'RENT' ? 'إيجار' : 'تفصيل'})</p>
+                    <div className="text-3xl font-black text-red-400">{formatCurrency(modal.item.amount)}</div>
+                    <p className="text-[9px] font-black text-red-500/60 uppercase tracking-widest mt-1">المبلغ المتبقي</p>
+                </div>
+
+                <div className="space-y-3">
+                    <label className="text-[11px] font-black text-white px-4 leading-none uppercase tracking-widest">تفاصيل السداد</label>
+                    <Input 
+                        label="المبلغ المدفوع الآن (EGP)" 
+                        type="number" 
+                        value={calcState.egpAmount || ''}
+                        onChange={(e: any) => handleEgpChange(Number(e.target.value))}
+                        required
+                    />
+                    
+                    <select 
+                        className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                        onChange={(e) => handlePaymentMethodChange(e.target.value)}
+                        required
+                    >
+                        <option value="كاش (جنية مصري)">طريقة الدفع: كاش (مصري)</option>
+                        {PAYMENT_METHODS.filter(p => !p.includes('جنية')).map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+
+                    {/* SMART CURRENCY CALCULATOR */}
+                    {calcState.currency !== 'EGP' && (
+                        <div className="p-4 bg-brand-500/5 border border-brand-500/20 rounded-2xl animate-slide-up grid grid-cols-2 gap-4 mt-2">
+                            <div className="col-span-2 flex items-center justify-between text-brand-400 mb-1">
+                                <div className="flex items-center gap-2"><Calculator size={16}/> <span className="text-xs font-bold">حاسبة العملة ({calcState.currency})</span></div>
+                                <RefreshCw size={14} className="opacity-50"/>
+                            </div>
+                            
+                            <Input 
+                                label={`المبلغ بالـ ${calcState.currency}`} 
+                                type="number" 
+                                value={calcState.foreignAmount || ''}
+                                onChange={(e:any) => handleForeignChange(Number(e.target.value))} 
+                                placeholder="0.00" 
+                            />
+                            <Input 
+                                label={calcState.currency === 'SDG' ? `سعر التحويل (كم ${calcState.currency} = 1 جنيه)` : `سعر التحويل (1 ${calcState.currency} = كم جنيه)`}
+                                type="number" 
+                                value={calcState.rate || ''}
+                                placeholder="مثلاً 55" 
+                                onChange={(e:any) => handleRateChange(Number(e.target.value))}
+                            />
+                            <p className="col-span-2 text-[10px] text-center text-slate-500 dir-ltr font-mono">
+                                Formula: {calcState.currency === 'SDG' 
+                                ? `${calcState.foreignAmount} ${calcState.currency} / ${calcState.rate} Rate = ${calcState.egpAmount} EGP`
+                                : `${calcState.foreignAmount} ${calcState.currency} * ${calcState.rate} Rate = ${calcState.egpAmount} EGP`}
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                    <Button type="button" variant="ghost" onClick={() => setModal(null)} className="!rounded-2xl">إلغاء</Button>
+                    <Button variant="success" className="!rounded-2xl shadow-lg shadow-emerald-900/20">
+                        <CheckCircle size={18} /> تأكيد السداد
+                    </Button>
+                </div>
+            </form>
+        </Modal>
       )}
 
       {/* Detail Modal for Stats */}

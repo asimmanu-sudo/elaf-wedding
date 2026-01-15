@@ -1,10 +1,10 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  Wallet, TrendingUp, PieChart, Target, ShoppingCart, RefreshCw, Settings, Save, Users, Trash2, Lock, Percent, Calculator
+  Wallet, TrendingUp, PieChart, Target, ShoppingCart, RefreshCw, Settings, Save, Users, Trash2, Lock, Percent, Calculator, Plus
 } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
-import { Card, Button, Input, Modal } from '../components/UI';
+import { Card, Button, Input, Modal, ConfirmModal } from '../components/UI';
 import { formatCurrency, today } from '../utils/helpers';
 import { CURRENCIES, DEFAULT_RENT_OPS_FEE, DEFAULT_STAFF_RATIO, PERSONAL_CATEGORIES } from '../utils/constants';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as ReTooltip } from 'recharts';
@@ -24,6 +24,9 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
 
   // State for Multi-Currency Expense Calculation
   const [expCalc, setExpCalc] = useState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
+
+  // State for New Jar
+  const [newJar, setNewJar] = useState({ category: '', percentage: 0 });
 
   useEffect(() => {
     const unsub = cloudDb.subscribe(COLLS.PERSONAL, (data) => {
@@ -131,7 +134,6 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
         // Source currency deduction
         bals[curr as keyof typeof bals] -= amt;
         // Target currency addition (Exchange logic is simpler here, usually EGP out -> USD in or vice versa)
-        // Note: The exchange transaction structure might need to be robust for personal wallet exchanges if implemented fully.
         if (t.toCurrency && t.exchangeRate) {
              const targetAmt = amt * t.exchangeRate; // Simplified for internal transfers if needed
              bals[t.toCurrency as keyof typeof bals] += targetAmt;
@@ -175,6 +177,21 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
           const newMembers = (config.familyMembers || []).filter((m: string) => m !== name);
           await cloudDb.update(COLLS.PERSONAL, config.id, { familyMembers: newMembers });
       }
+  };
+
+  const handleAddJar = async () => {
+      if (!newJar.category) return alert('يرجى ادخال اسم الحصالة');
+      const updatedPlan = [...(config.budgetPlan || []), { category: newJar.category, percentage: Number(newJar.percentage) }];
+      if (config.id) await cloudDb.update(COLLS.PERSONAL, config.id, { budgetPlan: updatedPlan });
+      else await cloudDb.add(COLLS.PERSONAL, { ...config, budgetPlan: updatedPlan, docType: 'UNIFIED_CONFIG' });
+      setNewJar({ category: '', percentage: 0 });
+      setModal(null);
+  };
+
+  const handleDeleteJar = async (category: string) => {
+      const updatedPlan = (config.budgetPlan || []).filter((p: any) => p.category !== category);
+      await cloudDb.update(COLLS.PERSONAL, config.id, { budgetPlan: updatedPlan });
+      setModal(null);
   };
 
   const handleAddTx = async (e: any) => {
@@ -382,7 +399,7 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
                   </h3>
                   <div className="flex flex-wrap gap-2 mb-4">
                       {(config.familyMembers || []).map((m: string) => (
-                          <span key={m} className="bg-slate-950 border border-white/10 px-3 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-2">
+                          <span key={m} className="bg-slate-990 border border-white/10 px-3 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-2">
                               {m} <button type="button" onClick={() => handleRemoveMember(m)} className="text-red-400"><Trash2 size={14}/></button>
                           </span>
                       ))}
@@ -393,13 +410,24 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
               </Card>
 
               <Card>
-                  <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                      <Target size={18}/> خطة الميزانية (Budget Plan)
-                  </h3>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                        <Target size={18}/> خطة الميزانية (Budget Plan)
+                    </h3>
+                    <button type="button" onClick={() => setModal({ type: 'ADD_JAR' })} className="text-emerald-400 hover:text-emerald-300">
+                        <Plus size={20} />
+                    </button>
+                  </div>
+                  
                   <div className="space-y-2">
                       {(config.budgetPlan || []).map((p: any) => (
-                          <div key={p.category} className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-white/5">
-                              <span className="text-xs font-bold text-white">{p.category}</span>
+                          <div key={p.category} className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-white/5 group">
+                              <div className="flex items-center gap-3">
+                                <button type="button" onClick={() => setModal({ type: 'CONFIRM_DELETE_JAR', category: p.category })} className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Trash2 size={16} />
+                                </button>
+                                <span className="text-xs font-bold text-white">{p.category}</span>
+                              </div>
                               <div className="flex items-center gap-2">
                                   <input 
                                       type="number" 
@@ -418,6 +446,38 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
                   <Save size={20}/> حفظ كافة الإعدادات
               </Button>
           </form>
+      )}
+
+      {/* ADD JAR MODAL */}
+      {modal?.type === 'ADD_JAR' && (
+        <Modal title="إضافة حصالة جديدة" onClose={() => setModal(null)} size="sm">
+            <div className="space-y-4">
+                <Input 
+                    label="اسم الحصالة" 
+                    value={newJar.category} 
+                    onChange={(e:any) => setNewJar({...newJar, category: e.target.value})} 
+                    placeholder="مثلاً: سفر، طوارئ..."
+                />
+                <Input 
+                    label="النسبة المئوية %" 
+                    type="number" 
+                    value={newJar.percentage} 
+                    onChange={(e:any) => setNewJar({...newJar, percentage: Number(e.target.value)})} 
+                />
+                <Button onClick={handleAddJar} className="w-full">إضافة</Button>
+            </div>
+        </Modal>
+      )}
+
+      {/* CONFIRM DELETE JAR */}
+      {modal?.type === 'CONFIRM_DELETE_JAR' && (
+        <ConfirmModal 
+            title="حذف الحصالة"
+            msg={`هل أنت متأكد من حذف حصالة "${modal.category}"؟ سيتم إزالتها من الخطة المستقبلية فقط.`}
+            onConfirm={() => handleDeleteJar(modal.category)}
+            onCancel={() => setModal(null)}
+            confirmText="نعم، حذف"
+        />
       )}
 
       {/* ADD TRANSACTION MODAL */}

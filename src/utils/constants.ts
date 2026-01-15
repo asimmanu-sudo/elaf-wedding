@@ -24,6 +24,7 @@ export const NAV_ITEMS = [
 ];
 
 export const PAYMENT_METHODS = [
+  "Instapay",
   "تحويل بنكك (سعر اليوم مصري)",
   "Western Union",
   "كاش (جنية مصري)",

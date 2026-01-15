@@ -289,8 +289,8 @@ function AppContent() {
         dir="rtl"
         style={themeStyles as React.CSSProperties}
       >
-        {/* SMART BACKUP REMINDER BANNER */}
-        {user && isBackupNeeded && (
+        {/* SMART BACKUP REMINDER BANNER - Admin Only */}
+        {user && user.role === UserRole.ADMIN && isBackupNeeded && (
             <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between shadow-md relative z-[150]">
                 <div className="flex items-center gap-2">
                     <AlertTriangle size={20} className="animate-pulse" />

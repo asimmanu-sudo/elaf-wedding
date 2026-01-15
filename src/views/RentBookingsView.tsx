@@ -6,6 +6,7 @@ import { BookingStatus, DressType, DressStatus } from '../types';
 import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
 import { today, formatCurrency, getWhatsAppLink, DEFAULT_WA_TEMPLATES, WATemplateKey } from '../utils/helpers';
 import { PAYMENT_METHODS, MEASUREMENT_FIELDS, COUNTRY_CODES } from '../utils/constants';
+import PrintPreviewModal from '../components/PrintPreviewModal';
 
 export default function RentBookingsView({ dresses, bookings, finance, query, hasPerm, showToast, addLog, onPrint }: any) {
   const [subTab, setSubTab] = useState<'current' | 'past' | 'fittings'>('current');
@@ -15,6 +16,10 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
   const [pendingSave, setPendingSave] = useState<any>(null);
   const [printFilter, setPrintFilter] = useState({ month: '', selectedIds: [] as string[] });
   
+  // Print Preview State
+  const [printModalData, setPrintModalData] = useState<any>(null);
+  const [printModalMode, setPrintModalMode] = useState<'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE'>('DEPOSIT');
+
   // Custom WA Templates State
   const [waTemplates, setWaTemplates] = useState(DEFAULT_WA_TEMPLATES);
 
@@ -107,10 +112,21 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
   const handleFitting1Click = async (b: any) => {
       const isDone = b.fitting1Done;
       if (isDone) {
+          // If already done, toggle off
           await cloudDb.update(COLLS.BOOKINGS, b.id, { fitting1Done: false });
           return;
       }
       setModal({ type: 'CONFIRM_FITTING_WORKFLOW', data: b });
+  };
+
+  const executeFitting1 = async (measure: boolean, item: any) => {
+      await cloudDb.update(COLLS.BOOKINGS, item.id, { fitting1Done: true });
+      if (measure) {
+          setModal({ ...item, type: 'MEASURE' });
+      } else {
+          setModal(null);
+          showToast('تم تأكيد البروفة');
+      }
   };
 
   // OPEN ADD/EDIT MODAL & INIT PHONE
@@ -236,6 +252,12 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
       });
   };
 
+  // Helper to open print modal
+  const openPrintModal = (data: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE') => {
+      setPrintModalData(data);
+      setPrintModalMode(mode);
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
        {/* Top Bar */}
@@ -358,7 +380,8 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                   {hasMeasurements ? <Check size={16}/> : <Ruler size={16}/>}
                   {hasMeasurements ? 'تم أخذ المقاسات' : 'لم يتم تسجيل المقاسات'}
                 </Button>
-                <Button variant="ghost" onClick={() => onPrint(b, 'DEPOSIT')} className="!w-12 !h-12 !p-0 text-brand-400"><Printer size={18}/></Button>
+                {/* Print button updated to open preview */}
+                <Button variant="ghost" onClick={() => openPrintModal(b, 'DEPOSIT')} className="!w-12 !h-12 !p-0 text-brand-400"><Printer size={18}/></Button>
                 <Button variant="ghost" onClick={() => openModal('EDIT', b)} className="!w-12 !h-12 !p-0 text-surface-500"><Edit size={18}/></Button>
                 <Button variant="ghost" onClick={() => handleDelete(b)} className="!w-12 !h-12 !p-0 text-red-400"><Trash2 size={18}/></Button>
               </div>
@@ -377,6 +400,25 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
           onCancel={() => setModal(null)}
           confirmText="نعم، حذف نهائي"
         />
+      )}
+
+      {/* CONFIRM FITTING WORKFLOW MODAL */}
+      {modal?.type === 'CONFIRM_FITTING_WORKFLOW' && (
+        <Modal title="تأكيد البروفة الأولى" onClose={() => setModal(null)} size="sm">
+            <div className="text-center space-y-6">
+               <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto text-emerald-500 border border-emerald-500/20">
+                   <Check size={40} />
+               </div>
+               <div>
+                   <h3 className="font-black text-white text-xl">تم تأكيد البروفة</h3>
+                   <p className="text-sm text-slate-400 mt-2">هل تريد تسجيل المقاسات الآن أم الاكتفاء بتحديث الحالة؟</p>
+               </div>
+               <div className="grid grid-cols-2 gap-4">
+                   <Button variant="ghost" onClick={() => executeFitting1(false, modal.data)}>تأكيد فقط</Button>
+                   <Button variant="success" onClick={() => executeFitting1(true, modal.data)}>تأكيد وتسجيل مقاسات</Button>
+               </div>
+            </div>
+        </Modal>
       )}
 
       {/* WHATSAPP TEMPLATES MODAL */}
@@ -459,7 +501,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
               <Button onClick={() => {
                  const data = filteredForPrint.filter((b:any) => printFilter.selectedIds.length === 0 || printFilter.selectedIds.includes(b.id));
                  if(data.length === 0) return showToast('اختر حجز واحد على الأقل', 'error');
-                 onPrint(data, 'SCHEDULE');
+                 openPrintModal(data, 'SCHEDULE');
                  setModal(null);
               }} className="w-full !rounded-2xl">إكمال الطباعة ({printFilter.selectedIds.length || filteredForPrint.length})</Button>
            </div>
@@ -469,6 +511,8 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
       {/* Modal - Add/Edit Booking */}
       {(modal?.type === 'ADD' || modal?.type === 'EDIT') && (
         <Modal title={modal.type === 'ADD' ? 'حجز جديد' : 'تعديل حجز'} onClose={() => setModal(null)} size="lg">
+           {/* ... Form content ... */}
+           {/* (No changes needed in the form body itself, keeping it brief for the update) */}
            <form onSubmit={async (e: any) => {
              e.preventDefault();
              const fd = new FormData(e.currentTarget);
@@ -521,7 +565,6 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                <Input label="اسم العروس" name="cn" defaultValue={modal.customerName} required />
                
-               {/* PHONE INPUT WITH COUNTRY CODE */}
                <div className="space-y-2">
                   <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">رقم الهاتف (واتساب)</label>
                   <div className="flex gap-2" dir="ltr">
@@ -690,10 +733,23 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
             <textarea name="orderNotes" placeholder="ملاحظات الشرح الإضافي..." defaultValue={modal.measurements?.orderNotes} className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-6 text-white font-bold h-32 outline-none focus:ring-2 focus:ring-brand-500 transition-all" />
             <div className="flex gap-4">
               <Button className="flex-1 !rounded-2xl">حفظ المقاسات</Button>
-              <Button type="button" onClick={() => onPrint(modal, 'SIZES')} variant="ghost" className="!rounded-2xl"><Printer size={20}/></Button>
+              <Button type="button" onClick={() => openPrintModal(modal, 'SIZES')} variant="ghost" className="!rounded-2xl"><Printer size={20}/></Button>
             </div>
           </form>
         </Modal>
+      )}
+
+      {/* PRINT PREVIEW MODAL */}
+      {printModalData && (
+          <PrintPreviewModal 
+            data={printModalData} 
+            mode={printModalMode} 
+            onClose={() => setPrintModalData(null)}
+            onPrint={(d, m) => {
+                onPrint(d, m); // Call global print logic (hides UI, shows print div)
+                setPrintModalData(null); // Close modal
+            }}
+          />
       )}
     </div>
   );

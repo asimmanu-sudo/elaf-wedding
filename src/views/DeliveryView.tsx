@@ -6,12 +6,17 @@ import { BookingStatus, SaleStatus, DressStatus } from '../types';
 import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
 import { today, formatCurrency } from '../utils/helpers';
 import { PAYMENT_METHODS } from '../utils/constants';
+import PrintPreviewModal from '../components/PrintPreviewModal';
 
 export default function DeliveryView({ bookings, sales, query, user, showToast, addLog, onPrint }: any) {
   const [subTab, setSubTab] = useState<'delivery' | 'return' | 'archive'>('delivery');
   const [modal, setModal] = useState<any>(null);
   const [extras, setExtras] = useState<string[]>([]);
   const [newExtra, setNewExtra] = useState('');
+
+  // Print Preview State
+  const [printModalData, setPrintModalData] = useState<any>(null);
+  const [printModalMode, setPrintModalMode] = useState<'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE'>('DEPOSIT');
 
   // SMART CALCULATION STATE
   const [calcState, setCalcState] = useState({ 
@@ -227,6 +232,12 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
     }
   };
 
+  // Helper to open print modal
+  const openPrintModal = (data: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE') => {
+      setPrintModalData(data);
+      setPrintModalMode(mode);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex bg-slate-900/60 p-1.5 rounded-2xl border border-white/5 sticky top-0 z-50 backdrop-blur-xl shadow-lg">
@@ -260,10 +271,10 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             </div>
             <div className="flex gap-2">
               <Button onClick={() => { setModal({ type: 'DELIVER_FORM', item }); setCalcState({ currency: 'EGP', egpAmount: item.remainingToPay || item.remainingFromBride, foreignAmount: 0, rate: 0 }); }} variant="success" className="flex-1 h-12 text-xs font-bold">تسليم للعروس</Button>
-              {/* Force visible printer button */}
+              {/* Force visible printer button with preview */}
               <button 
                 type="button" 
-                onClick={() => onPrint(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')}
+                onClick={() => openPrintModal(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')}
                 className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-sky-400 border border-white/10 transition-colors"
                 title="طباعة"
               >
@@ -299,9 +310,9 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
               >
                 <RotateCcw size={20} />
               </button>
-              {/* Force visible print button */}
+              {/* Force visible print button with preview */}
               <button 
-                onClick={() => onPrint(item, 'RECEIPT')}
+                onClick={() => openPrintModal(item, 'RECEIPT')}
                 className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-sky-400 border border-white/10 transition-colors"
                 title="طباعة"
               >
@@ -317,9 +328,9 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
               <h4 className="font-black text-white">{item.customerName || item.brideName}</h4>
               <div className="flex items-center gap-2">
                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${item.type === 'SALE' ? 'bg-orange-500/10 text-orange-400' : 'bg-brand-500/10 text-brand-400'}`}>{item.type === 'SALE' ? 'تفصيل' : 'إيجار'}</span>
-                 {/* Compact visible printer button */}
+                 {/* Compact visible printer button with preview */}
                  <button 
-                    onClick={() => onPrint(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')}
+                    onClick={() => openPrintModal(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')}
                     className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 text-sky-400 border border-white/10 transition-colors"
                     title="طباعة"
                  >
@@ -356,6 +367,8 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
 
       {modal?.type === 'DELIVER_FORM' && (
         <Modal title={`إتمام تسليم: ${modal.item.customerName || modal.item.brideName}`} onClose={() => { setModal(null); setExtras([]); setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 }); }}>
+          {/* ... Form ... */}
+          {/* (No internal changes to form logic needed) */}
           <form onSubmit={handleDeliverConfirm} className="space-y-6">
             <div className="bg-slate-950 border border-white/5 p-4 rounded-2xl mb-4 text-center">
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">إجمالي المبلغ المستحق على العروس</p>
@@ -445,10 +458,10 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             )}
             <div className="flex gap-2">
                <Button className="flex-1 !rounded-2xl h-16 shadow-xl">تأكيد عملية التسليم</Button>
-               {/* Modal Printer Button */}
+               {/* Modal Printer Button with preview */}
                <button 
                  type="button" 
-                 onClick={() => onPrint(modal.item, modal.item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')}
+                 onClick={() => openPrintModal(modal.item, modal.item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')}
                  className="w-16 h-16 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-sky-400 border border-white/10 transition-colors"
                  title="طباعة"
                >
@@ -491,10 +504,10 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             )}
             <div className="flex gap-2">
                <Button className="flex-1 !rounded-2xl h-16 shadow-xl">تأكيد الاستلام النهائي</Button>
-               {/* Modal Printer Button */}
+               {/* Modal Printer Button with preview */}
                <button 
                  type="button" 
-                 onClick={() => onPrint(modal.item, 'RECEIPT')}
+                 onClick={() => openPrintModal(modal.item, 'RECEIPT')}
                  className="w-16 h-16 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-sky-400 border border-white/10 transition-colors"
                  title="طباعة"
                >
@@ -504,6 +517,19 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             <p className="text-center text-[10px] text-slate-500 font-bold">تأكيد الاستلام سيغير حالة الفستان تلقائياً إلى "يحتاج تنظيف".</p>
           </form>
         </Modal>
+      )}
+
+      {/* PRINT PREVIEW MODAL */}
+      {printModalData && (
+          <PrintPreviewModal 
+            data={printModalData} 
+            mode={printModalMode} 
+            onClose={() => setPrintModalData(null)}
+            onPrint={(d, m) => {
+                onPrint(d, m); // Call global print logic
+                setPrintModalData(null); // Close modal
+            }}
+          />
       )}
     </div>
   );

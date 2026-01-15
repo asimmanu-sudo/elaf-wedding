@@ -1,5 +1,6 @@
+
 import React, { useState, useMemo } from 'react';
-import { Users, CheckCircle } from 'lucide-react';
+import { Users, CheckCircle, MessageCircle } from 'lucide-react';
 import { Card, Modal } from '../components/UI';
 import { formatCurrency, today } from '../utils/helpers';
 
@@ -58,14 +59,29 @@ export default function CustomersView({ bookings, sales, query }: any) {
         {customers.map((c: any) => (
           <Card key={c.id} onClick={() => setViewCustomer(c)} className="cursor-pointer hover:border-brand-500/50 group relative overflow-hidden">
              <div className="absolute top-0 right-0 w-1.5 h-full bg-slate-800 group-hover:bg-brand-500 transition-colors"></div>
-             <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center text-slate-500 font-black text-xl group-hover:bg-brand-500 group-hover:text-white transition-all border border-white/5">
-                  {c.name.charAt(0)}
+             <div className="flex justify-between items-start mb-4">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center text-slate-500 font-black text-xl group-hover:bg-brand-500 group-hover:text-white transition-all border border-white/5">
+                    {c.name.charAt(0)}
+                    </div>
+                    <div>
+                    <h4 className="font-black text-white text-base">{c.name}</h4>
+                    <p className="text-[10px] text-slate-500 font-bold tracking-wider" dir="ltr">{c.phone || 'No Phone'}</p>
+                    </div>
                 </div>
-                <div>
-                  <h4 className="font-black text-white text-base">{c.name}</h4>
-                  <p className="text-[10px] text-slate-500 font-bold tracking-wider" dir="ltr">{c.phone || 'No Phone'}</p>
-                </div>
+                {c.phone && (
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            const cleanPhone = c.phone.replace(/\+/g, '').replace(/\s+/g, '');
+                            window.open(`https://wa.me/${cleanPhone}`, '_blank');
+                        }}
+                        className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center hover:bg-emerald-500 hover:text-white transition-colors border border-emerald-500/20"
+                        title="مراسلة عبر واتساب"
+                    >
+                        <MessageCircle size={18} />
+                    </button>
+                )}
              </div>
              <div className="flex justify-between items-end border-t border-white/5 pt-3">
                 <div>

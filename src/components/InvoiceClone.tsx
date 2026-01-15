@@ -4,7 +4,7 @@ import { Phone } from 'lucide-react';
 import { formatCurrency, today } from '../utils/helpers';
 import { MEASUREMENT_FIELDS } from '../utils/constants';
 
-const InvoiceClone = ({ data, mode = 'DEPOSIT' }: { data: any, mode?: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE' }) => {
+const InvoiceClone = ({ data, mode = 'DEPOSIT', signatureImg }: { data: any, mode?: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE', signatureImg?: string }) => {
   if (!data) return null;
 
   const invDate = (data.createdAt || data.orderDate || today).split('-').reverse().join(' / ');
@@ -93,7 +93,14 @@ const InvoiceClone = ({ data, mode = 'DEPOSIT' }: { data: any, mode?: 'DEPOSIT' 
         </div>
         
         <div className="text-center pb-2">
-           <div className="w-64 border-b-2 border-dashed border-slate-300 mb-3"></div>
+           {signatureImg ? (
+             <div className="mb-2">
+               <img src={signatureImg} alt="Client Signature" className="h-16 object-contain mix-blend-multiply opacity-80" />
+               <div className="w-64 border-b border-slate-300"></div>
+             </div>
+           ) : (
+             <div className="w-64 border-b-2 border-dashed border-slate-300 mb-3"></div>
+           )}
            <p className="text-base font-black text-slate-400 uppercase tracking-widest">توقيع العميل</p>
         </div>
         
