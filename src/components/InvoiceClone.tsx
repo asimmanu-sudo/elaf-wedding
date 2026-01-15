@@ -4,7 +4,13 @@ import { Phone } from 'lucide-react';
 import { formatCurrency, today } from '../utils/helpers';
 import { MEASUREMENT_FIELDS } from '../utils/constants';
 
-const InvoiceClone = ({ data, mode = 'DEPOSIT', signatureImg }: { data: any, mode?: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE', signatureImg?: string }) => {
+interface InvoiceCloneProps {
+  data: any;
+  mode?: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE';
+  signatureImg?: string | null; // Added signature prop
+}
+
+const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', signatureImg }) => {
   if (!data) return null;
 
   const invDate = (data.createdAt || data.orderDate || today).split('-').reverse().join(' / ');
@@ -92,15 +98,15 @@ const InvoiceClone = ({ data, mode = 'DEPOSIT', signatureImg }: { data: any, mod
            </div>
         </div>
         
+        {/* SIGNATURE SECTION */}
         <div className="text-center pb-2">
-           {signatureImg ? (
-             <div className="mb-2">
-               <img src={signatureImg} alt="Client Signature" className="h-16 object-contain mix-blend-multiply opacity-80" />
-               <div className="w-64 border-b border-slate-300"></div>
-             </div>
-           ) : (
-             <div className="w-64 border-b-2 border-dashed border-slate-300 mb-3"></div>
-           )}
+           <div className="h-20 flex items-end justify-center mb-2">
+              {signatureImg ? (
+                  <img src={signatureImg} alt="Signature" className="h-full object-contain mix-blend-multiply opacity-90" />
+              ) : (
+                  <div className="w-64 border-b-2 border-dashed border-slate-300"></div>
+              )}
+           </div>
            <p className="text-base font-black text-slate-400 uppercase tracking-widest">توقيع العميل</p>
         </div>
         
@@ -119,7 +125,7 @@ const InvoiceClone = ({ data, mode = 'DEPOSIT', signatureImg }: { data: any, mod
     flexDirection: 'column',
     backgroundColor: 'white',
     color: '#334155',
-    padding: '12mm', // Increased padding for better aesthetics
+    padding: '12mm',
     boxSizing: 'border-box',
     position: 'relative',
     fontFamily: 'Tajawal, sans-serif'

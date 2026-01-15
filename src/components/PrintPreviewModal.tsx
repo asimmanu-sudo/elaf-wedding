@@ -1,21 +1,24 @@
-
 import React, { useState, useRef } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
-import { X, Printer, Pen, Eraser, Check, Maximize2, Minimize2, MessageCircle } from 'lucide-react';
+import { X, Printer, Pen, Eraser, Check, Maximize2, Minimize2, MessageCircle, Download, Share2 } from 'lucide-react';
 import InvoiceClone from './InvoiceClone';
 import { formatCurrency } from '../utils/helpers';
+import html2canvas from 'html2canvas';
 
 interface PrintPreviewModalProps {
   data: any;
   mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE';
   onClose: () => void;
-  onPrint: (data: any, mode: any) => void;
+  onPrint: (data: any, mode: any, signature?: string | null) => void;
 }
 
 export default function PrintPreviewModal({ data, mode, onClose, onPrint }: PrintPreviewModalProps) {
   const [signatureImg, setSignatureImg] = useState<string | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  
   const sigPad = useRef<SignatureCanvas>(null);
+  const invoiceRef = useRef<HTMLDivElement>(null);
 
   const clearSignature = () => {
     sigPad.current?.clear();
@@ -24,57 +27,109 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
 
   const saveSignature = () => {
     if (sigPad.current && !sigPad.current.isEmpty()) {
-      setSignatureImg(sigPad.current.getTrimmedCanvas().toDataURL('image/png'));
+      const dataUrl = sigPad.current.getTrimmedCanvas().toDataURL('image/png');
+      setSignatureImg(dataUrl);
     }
   };
 
   const handleFinalPrint = () => {
-    // Inject signature into data if available
-    const finalData = signatureImg ? { ...data, signatureImg } : data;
-    onPrint(finalData, mode);
+    // 1. Check if there's a signature in the pad that hasn't been saved to state yet
+    let finalSig = signatureImg;
+    
+    if (sigPad.current && !sigPad.current.isEmpty()) {
+       // If user signed but didn't click "Save", we capture it now
+       finalSig = sigPad.current.getTrimmedCanvas().toDataURL('image/png');
+       setSignatureImg(finalSig); // Update state for consistency
+    }
+
+    // 2. Proceed with print
+    onPrint(data, mode, finalSig);
   };
 
-  const handleWhatsAppShare = () => {
-    const name = data.customerName || data.brideName || 'العميل';
-    const dress = data.dressName || data.factoryCode || 'الفستان';
-    const total = data.rentalPrice || data.sellPrice || 0;
-    const paid = data.paidDeposit || data.deposit || 0;
-    const remaining = data.remainingToPay || data.remainingFromBride || 0;
-    const date = data.eventDate || data.expectedDeliveryDate || '---';
+  const handleWhatsAppShare = async () => {
+    if (!invoiceRef.current) return;
+    setIsSharing(true);
 
-    const msg = `مرحباً ${name}،\nإليك تفاصيل الفاتورة الإلكترونية من إيلاف:\n\nالفستان: ${dress}\nالمناسبة: ${date}\n\nالإجمالي: ${formatCurrency(total)}\nالمدفوع: ${formatCurrency(paid)}\nالمتبقي: ${formatCurrency(remaining)}\n\nشكراً لاختيارك إيلاف! 💖`;
-    
-    const phone = data.customerPhone || data.bridePhone;
-    const cleanPhone = (phone || '').replace(/\s+/g, '').replace(/-/g, '').replace('+', '');
-    
-    if (cleanPhone) {
-        window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
-    } else {
-        alert('رقم الهاتف غير متوفر');
+    try {
+        // Ensure signature is captured for the image
+        if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
+            saveSignature();
+            // Allow a brief tick for React to render the signature into InvoiceClone
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        // Capture Invoice as Image
+        const canvas = await html2canvas(invoiceRef.current, {
+            scale: 2, // Better quality
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff'
+        });
+
+        const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (!blob) throw new Error('Failed to create blob');
+
+        const file = new File([blob], `invoice_${data.id || 'draft'}.png`, { type: 'image/png' });
+        
+        // Try Native Share (Mobile)
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                title: 'فاتورة إيلاف',
+                text: `فاتورة ${data.customerName || data.brideName}`,
+            });
+        } else {
+            // Fallback: Download for Desktop
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL('image/png');
+            link.download = `invoice_${data.id || 'draft'}.png`;
+            link.click();
+            alert('تم تحميل صورة الفاتورة بنجاح. يمكنك الآن إرسالها يدوياً عبر واتساب.');
+            
+            // Optionally open WhatsApp Web text link as a helper
+            const phone = data.customerPhone || data.bridePhone;
+            if (phone) {
+                const cleanPhone = phone.replace(/\s+/g, '').replace(/-/g, '').replace('+', '');
+                window.open(`https://wa.me/${cleanPhone}`, '_blank');
+            }
+        }
+
+    } catch (error) {
+        console.error('Error sharing invoice:', error);
+        alert('حدث خطأ أثناء محاولة مشاركة الفاتورة.');
+    } finally {
+        setIsSharing(false);
     }
   };
 
-  // Preview Scale Logic
-  const A4_WIDTH_PX = 794; // 210mm at 96dpi
-  const A4_HEIGHT_PX = 1123; // 296mm at 96dpi
-  
   return (
-    <div className={`fixed inset-0 z-[2000] bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4 transition-all duration-300 ${isFullScreen ? 'p-0' : 'p-4'}`}>
+    <div className={`fixed inset-0 z-[2000] bg-slate-950/95 backdrop-blur-md flex items-center justify-center transition-all duration-300 ${isFullScreen ? 'p-0' : 'p-4'}`}>
       
       {/* Container */}
       <div className={`bg-slate-900 border border-white/10 rounded-3xl overflow-hidden flex flex-col md:flex-row w-full ${isFullScreen ? 'h-full rounded-none border-none' : 'max-w-[95vw] h-[90vh]'}`}>
         
         {/* LEFT: PREVIEW AREA */}
-        <div className="flex-1 bg-slate-800/50 relative overflow-hidden flex items-center justify-center p-8 group">
+        <div className="flex-1 bg-slate-800/50 relative overflow-auto flex justify-center p-8 group custom-scrollbar">
           <div className="absolute top-4 left-4 z-20 flex gap-2">
              <button onClick={() => setIsFullScreen(!isFullScreen)} className="w-10 h-10 bg-slate-950/50 text-white rounded-full flex items-center justify-center hover:bg-brand-500 transition-colors">
                 {isFullScreen ? <Minimize2 size={20}/> : <Maximize2 size={20}/>}
              </button>
           </div>
 
-          <div className="relative shadow-2xl origin-center transition-transform duration-300 transform scale-[0.45] md:scale-[0.55] lg:scale-[0.65] xl:scale-[0.75]">
-             <div className="pointer-events-none select-none bg-white">
-                <InvoiceClone data={data} mode={mode} signatureImg={signatureImg || undefined} />
+          {/* 
+             Fix: Wrapped InvoiceClone in a div with explicit A4 dimensions.
+             Added origin-top to keep it centered/top aligned when scaled down.
+          */}
+          <div 
+             className="relative shadow-2xl transition-transform duration-300 origin-top"
+             style={{ transform: isFullScreen ? 'scale(0.85)' : 'scale(0.55)' }}
+          >
+             <div 
+                ref={invoiceRef} 
+                className="bg-white pointer-events-none select-none"
+                style={{ width: '210mm', minHeight: '296mm' }} // Enforce A4 Size
+             >
+                <InvoiceClone data={data} mode={mode} signatureImg={signatureImg} />
              </div>
           </div>
         </div>
@@ -97,14 +152,15 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
                   <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                       <Pen size={14}/> توقيع العميل (إلكتروني)
                   </label>
-                  {signatureImg && <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1"><Check size={12}/> تم الحفظ</span>}
+                  {signatureImg && <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1"><Check size={12}/> تم الاعتماد</span>}
               </div>
               
               <div className="bg-white rounded-2xl overflow-hidden border-2 border-dashed border-slate-700 relative h-48 group hover:border-brand-500 transition-colors cursor-crosshair">
                   <SignatureCanvas 
                       ref={sigPad}
+                      // Removed penColor prop to rely on default (black) to fix TS error
                       canvasProps={{ className: 'w-full h-full' }}
-                      onEnd={() => setSignatureImg(null)} // Reset saved state on new stroke
+                      onEnd={() => { /* Optional: auto-save on end stroke if desired */ }}
                   />
                   <button 
                       onClick={clearSignature} 
@@ -116,7 +172,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
               </div>
 
               <button onClick={saveSignature} className="w-full h-10 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold border border-white/5 transition-colors">
-                 تثبيت التوقيع على الفاتورة
+                 تثبيت التوقيع على المعاينة
               </button>
            </div>
 
@@ -128,8 +184,19 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
                    <Printer size={20} /> طباعة نهائية
                </button>
 
-               <button onClick={handleWhatsAppShare} className="w-full h-14 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-sm font-black shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-3 transition-all active:scale-95">
-                   <MessageCircle size={20} /> مشاركة واتساب (ملخص)
+               <button 
+                  onClick={handleWhatsAppShare} 
+                  disabled={isSharing}
+                  className="w-full h-14 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-sm font-black shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+               >
+                   {isSharing ? (
+                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                   ) : (
+                     <>
+                        <Share2 size={20} />
+                        <span>مشاركة صورة الفاتورة</span>
+                     </>
+                   )}
                </button>
            </div>
         </div>

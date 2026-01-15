@@ -24,7 +24,6 @@ import LogsView from './views/LogsView';
 import SettingsView from './views/SettingsView';
 
 // --- THEME CONFIGURATION (RGB CHANNELS ONLY) ---
-// These values are injected into --color-brand-* and --color-base-*
 const THEMES: any = {
   default: {
     // Brand: Purple/Fuchsia (Default)
@@ -129,6 +128,7 @@ function AppContent() {
   const [toasts, setToasts] = useState<any[]>([]);
   const [printingItem, setPrintingItem] = useState<any>(null);
   const [printMode, setPrintMode] = useState<'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE'>('DEPOSIT');
+  const [printSignature, setPrintSignature] = useState<string | null>(null);
   
   // Theme State
   const [theme, setTheme] = useState(localStorage.getItem('app_theme') || 'default');
@@ -176,10 +176,18 @@ function AppContent() {
     if (user) cloudDb.add(COLLS.LOGS, { action, username: user.name, timestamp: new Date().toISOString(), details });
   };
 
-  const handlePrint = (item: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE' = 'DEPOSIT') => {
+  // Updated Print Handler to accept optional signature
+  const handlePrint = (item: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE' = 'DEPOSIT', signature?: string | null) => {
     setPrintMode(mode);
     setPrintingItem(item);
-    setTimeout(() => { window.print(); }, 800);
+    setPrintSignature(signature || null);
+    
+    // Wait for state updates to reflect in DOM before printing
+    setTimeout(() => { 
+      window.print(); 
+      // Optional: Clear signature after print to avoid stale state if printing multiple items
+      // setPrintSignature(null); 
+    }, 800);
   };
 
   const handleBackupExport = () => {
@@ -361,7 +369,8 @@ function AppContent() {
       </div>
 
       <div id="printable-invoice-container">
-        <InvoiceClone data={printingItem} mode={printMode} />
+        {/* Pass the captured signature to the invoice template */}
+        <InvoiceClone data={printingItem} mode={printMode} signatureImg={printSignature} />
       </div>
     </>
   );
