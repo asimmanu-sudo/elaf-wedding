@@ -4,7 +4,7 @@ import { Users, Key, Edit, UserPlus, RotateCcw, BarChart3, AlertTriangle, Palett
 import { cloudDb, COLLS } from '../services/firebase';
 import { backupService } from '../services/backup';
 import { UserRole, BookingStatus } from '../types';
-import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
+import { Button, Input, Modal, ConfirmModal, Card } from '../components/UI';
 import { PERMISSIONS_CATEGORIES } from '../utils/constants';
 import { today, formatCurrency, DEFAULT_WA_TEMPLATES } from '../utils/helpers';
 
@@ -15,11 +15,9 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
 
   // Backup & Restore State
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [restoreFile, setRestoreFile] = useState<any>(null);
+  const [restoreFileContent, setRestoreFileContent] = useState<any>(null);
   const [isRestoring, setIsRestoring] = useState(false);
-
-  // State for Opening Balance Wizard
-  const [openingState, setOpeningState] = useState({ egp: 0, sdg: 0, rate: 50 });
+  const [restoreStatus, setRestoreStatus] = useState<string>('');
 
   useEffect(() => {
     // Load WhatsApp Templates
@@ -116,7 +114,7 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
   // --- BACKUP & RESTORE LOGIC ---
   const handleBackupNow = () => {
       // Gather current data from props
-      const fullData = { dresses, bookings, sales, finance, users, logs: [] }; // logs usually fetched separately or big, maybe omit or fetch fresh if needed
+      const fullData = { dresses, bookings, sales, finance, users, logs: [] }; 
       const success = backupService.exportData(fullData);
       if(success) showToast('تم تحميل النسخة الاحتياطية');
       else showToast('فشل التحميل', 'error');
@@ -129,26 +127,32 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
       const reader = new FileReader();
       reader.onload = (event) => {
           try {
-              const json = JSON.parse(event.target?.result as string);
+              const jsonContent = event.target?.result as string;
+              const data = JSON.parse(jsonContent);
+              
               // Basic Validation
-              if (!json.dresses && !json.bookings) {
-                  throw new Error("Invalid Format");
+              if (!data.dresses && !data.bookings && !data.users) {
+                  throw new Error("ملف غير صالح: لا يحتوي على بيانات النظام المعروفة");
               }
-              setRestoreFile(json);
+              
+              setRestoreFileContent(data);
               setModal({ type: 'CONFIRM_RESTORE_FILE' });
           } catch (err) {
-              showToast('الملف غير صالح أو تالف', 'error');
+              console.error(err);
+              showToast('الملف تالف أو غير صالح', 'error');
           }
       };
       reader.readAsText(file);
-      // Reset input
+      // Reset input so same file can be selected again if needed
       e.target.value = '';
   };
 
   const executeRestoreFromFile = async () => {
-      if (!restoreFile) return;
+      if (!restoreFileContent) return;
+      
+      setModal(null); // Close confirmation modal
       setIsRestoring(true);
-      setModal(null); // Close confirmation, show loading overlay if we implemented one, or just wait.
+      setRestoreStatus('جاري تحليل البيانات...');
 
       try {
           const collectionsMap: any = {
@@ -161,35 +165,54 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
           };
 
           let totalRestored = 0;
+          const collections = Object.keys(restoreFileContent);
 
-          for (const key of Object.keys(collectionsMap)) {
-              const dataArray = restoreFile[key];
-              if (Array.isArray(dataArray)) {
-                  for (const item of dataArray) {
-                      if (item.id) {
-                          // Upsert: Update if exists, create if not (with specific ID)
-                          await cloudDb.update(collectionsMap[key], item.id, item);
+          for (const key of collections) {
+              const dbCollectionName = collectionsMap[key];
+              const items = restoreFileContent[key];
+
+              if (dbCollectionName && Array.isArray(items) && items.length > 0) {
+                  setRestoreStatus(`جاري استعادة ${key} (${items.length} سجل)...`);
+                  
+                  // Process in chunks to avoid UI freeze or quota limits
+                  for (const item of items) {
+                      if (!item.id) continue;
+
+                      // Sanitize data: remove undefined fields (Firestore doesn't like them)
+                      const cleanItem = JSON.parse(JSON.stringify(item));
+
+                      try {
+                          // Use explicitly added 'set' to create/overwrite doc with specific ID
+                          await cloudDb.set(dbCollectionName, item.id, cleanItem);
                           totalRestored++;
+                      } catch (innerErr) {
+                          console.warn(`Failed to restore item ${item.id} in ${key}:`, innerErr);
+                          // Continue to next item
                       }
                   }
               }
           }
 
           addLog('استعادة نسخة', `تم استعادة النظام من ملف. السجلات المعالجة: ${totalRestored}`);
-          showToast(`تمت الاستعادة بنجاح (${totalRestored} سجل)`);
+          setRestoreStatus('تمت العملية بنجاح!');
           
           setTimeout(() => {
+              alert(`تم استعادة ${totalRestored} سجل بنجاح. سيتم إعادة تحميل النظام الآن.`);
               window.location.reload();
-          }, 1500);
+          }, 500);
 
-      } catch (err) {
-          console.error(err);
-          showToast('حدث خطأ أثناء الاستعادة', 'error');
+      } catch (err: any) {
+          console.error("Restore Error:", err);
+          showToast(`حدث خطأ أثناء الاستعادة: ${err.message}`, 'error');
           setIsRestoring(false);
+          setRestoreStatus('');
       }
   };
 
   // --- OPENING BALANCE WIZARD LOGIC ---
+  // State for Opening Balance Wizard
+  const [openingState, setOpeningState] = useState({ egp: 0, sdg: 0, rate: 50 });
+
   const handleOpeningBalance = () => {
       setModal({ type: 'OPENING_BALANCE' });
   };
@@ -330,6 +353,16 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
                     </div>
                 </div>
                 
+                {/* LOADING OVERLAY FOR RESTORE */}
+                {isRestoring && (
+                    <div className="fixed inset-0 z-[2000] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center">
+                        <Loader size={64} className="text-brand-500 animate-spin mb-4" />
+                        <h2 className="text-2xl font-black text-white mb-2">جاري استعادة البيانات...</h2>
+                        <p className="text-sm text-slate-400 font-bold">{restoreStatus}</p>
+                        <p className="text-xs text-red-400 mt-4 font-bold">يرجى عدم إغلاق الصفحة</p>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <button 
                         onClick={handleBackupNow}
@@ -346,12 +379,6 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
                         onClick={() => fileInputRef.current?.click()}
                         className="flex flex-col items-center justify-center p-6 bg-slate-900 border border-white/5 rounded-3xl hover:bg-slate-800 hover:border-orange-500/30 transition-all group relative overflow-hidden"
                     >
-                        {isRestoring && (
-                            <div className="absolute inset-0 bg-slate-950/90 z-20 flex flex-col items-center justify-center">
-                                <Loader size={32} className="text-brand-500 animate-spin mb-2"/>
-                                <span className="text-xs font-bold text-white blink">جاري استعادة البيانات...</span>
-                            </div>
-                        )}
                         <input 
                             type="file" 
                             accept=".json" 
@@ -413,13 +440,13 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
          </div>
        )}
 
-       {/* CONFIRMATION MODALS */}
+       {/* CONFIRMATION MODAL FOR RESTORE */}
        {modal?.type === 'CONFIRM_RESTORE_FILE' && (
          <ConfirmModal 
            title="استعادة البيانات"
            msg="تحذير: ستقوم هذه العملية بدمج وتحديث البيانات الحالية بالبيانات الموجودة في الملف. هل أنت متأكد تماماً من صحة الملف المختار؟"
            onConfirm={executeRestoreFromFile}
-           onCancel={() => { setModal(null); setRestoreFile(null); }}
+           onCancel={() => { setModal(null); setRestoreFileContent(null); }}
            confirmText="نعم، ابدأ الاستعادة"
            variant="danger"
            icon={FileJson}
@@ -494,7 +521,7 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
          </Modal>
        )}
 
-       {/* NEW: Opening Balance Wizard Modal */}
+       {/* OPENING BALANCE MODAL */}
        {modal?.type === 'OPENING_BALANCE' && (
          <Modal title="ضبط الرصيد الافتتاحي" onClose={() => setModal(null)} size="md">
             <div className="space-y-6">

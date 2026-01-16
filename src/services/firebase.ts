@@ -1,3 +1,4 @@
+
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 
@@ -57,6 +58,11 @@ export const cloudDb = {
         if (!db) throw new Error("Firestore down");
         const docRef = await db.collection(collectionName).add(data);
         return docRef.id;
+    },
+    set: async (collectionName: string, id: string, data: any) => {
+        if (!db) throw new Error("Firestore down");
+        const docRef = db.collection(collectionName).doc(id);
+        await docRef.set(data, { merge: true });
     },
     update: async (collectionName: string, id: string, data: any) => {
         if (!db) throw new Error("Firestore down");
