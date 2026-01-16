@@ -66,19 +66,21 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
 
         // 2. High Quality Capture Settings for A4 using html-to-image
         // A4 Width at 96 DPI is approx 794px. 
-        // pixelRatio: 4 ensures high density (approx 300+ DPI equivalent) for crisp text on mobile.
+        // pixelRatio: 3 ensures high density (~300 DPI equivalent) for crisp text on mobile.
         const width = 794; 
-        const height = 1123; // A4 height @ 96dpi
+        const height = 1123; 
 
         const dataUrl = await toPng(invoiceRef.current, {
-            cacheBust: true, // Prevents caching issues with external images (like logos)
-            pixelRatio: 4,   // High Quality for mobile zooming and printing
+            cacheBust: true, 
+            pixelRatio: 3,   // Force 3x resolution (Critical for mobile quality)
             quality: 1.0,
-            backgroundColor: '#ffffff', // Force white background
+            backgroundColor: '#ffffff', 
             width: width,
             height: height,
             style: {
-                // Ensure specific styles for capture
+                // Ensure specific styles for capture are reset
+                transform: 'scale(1)',
+                transformOrigin: 'top left',
                 fontFamily: "'Tajawal', sans-serif",
             }
         });
