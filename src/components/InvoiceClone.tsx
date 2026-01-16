@@ -8,7 +8,7 @@ interface InvoiceCloneProps {
   data: any;
   mode?: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE';
   signatureImg?: string | null;
-  className?: string; // Added className prop
+  className?: string;
 }
 
 const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', signatureImg, className = '' }) => {
@@ -292,7 +292,7 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
                 </div>
             </div>
 
-            {/* Receipt Terms - Updated Typography and Spacing */}
+            {/* Receipt Terms */}
             <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 flex-1 flex flex-col">
                 <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-200 pb-2">شروط الاستلام والإرجاع</h4>
                 <ol className="list-decimal list-outside pr-4 space-y-2 overflow-hidden">
@@ -380,7 +380,7 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
               </div>
           </div>
 
-          {/* Terms & Conditions - Readable Mode */}
+          {/* Terms & Conditions */}
           <div className="flex-1 bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-start mb-6">
               <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-200 pb-2">الشروط والأحكام (Terms & Conditions)</h4>
               <ol className="list-decimal list-outside pr-4 space-y-1.5 overflow-hidden">

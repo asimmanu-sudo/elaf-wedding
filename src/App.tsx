@@ -126,9 +126,12 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('home');
   const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<any[]>([]);
+  
+  // Printing State
   const [printingItem, setPrintingItem] = useState<any>(null);
   const [printMode, setPrintMode] = useState<'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE'>('DEPOSIT');
   const [printSignature, setPrintSignature] = useState<string | null>(null);
+  const [isReadyToPrint, setIsReadyToPrint] = useState(false);
   
   // Theme State
   const [theme, setTheme] = useState(localStorage.getItem('app_theme') || 'default');
@@ -166,6 +169,18 @@ function AppContent() {
     };
   }, []);
 
+  // Async Print Logic
+  useEffect(() => {
+    if (isReadyToPrint) {
+        // Wait for DOM render of the hidden div
+        const timer = setTimeout(() => {
+            window.print();
+            setIsReadyToPrint(false); // Reset
+        }, 500);
+        return () => clearTimeout(timer);
+    }
+  }, [isReadyToPrint]);
+
   const showToast = (msg: string, type: 'success' | 'error' | 'warning' = 'success') => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, msg, type }]);
@@ -176,18 +191,15 @@ function AppContent() {
     if (user) cloudDb.add(COLLS.LOGS, { action, username: user.name, timestamp: new Date().toISOString(), details });
   };
 
-  // Updated Print Handler to accept optional signature with delay
+  // Updated Print Handler
   const handlePrint = (item: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE' = 'DEPOSIT', signature?: string | null) => {
-    // 1. Update State
-    setPrintMode(mode);
+    // 1. Set Data
     setPrintingItem(item);
+    setPrintMode(mode);
     setPrintSignature(signature || null);
     
-    // 2. Wait for state updates to reflect in DOM before printing (Async)
-    // 500ms delay gives the browser time to render the image src
-    setTimeout(() => { 
-      window.print(); 
-    }, 500);
+    // 2. Trigger Async Print Flow
+    setIsReadyToPrint(true);
   };
 
   const handleBackupExport = () => {
@@ -368,6 +380,7 @@ function AppContent() {
         </div>
       </div>
 
+      {/* Hidden Print Container: Holds the specific ID/Class required by CSS */}
       <div id="printable-invoice-container" className="print-invoice">
           <InvoiceClone 
               data={printingItem} 
