@@ -172,11 +172,11 @@ function AppContent() {
   // Async Print Logic
   useEffect(() => {
     if (isReadyToPrint) {
-        // Wait 1000ms (1 second) to ensure Base64 images are fully painted in DOM
+        // Wait 800ms for DOM update and image rendering
         const timer = setTimeout(() => {
             window.print();
-            setIsReadyToPrint(false); // Reset after print dialog opens
-        }, 1000);
+            setIsReadyToPrint(false); // Reset
+        }, 800);
         return () => clearTimeout(timer);
     }
   }, [isReadyToPrint, printingItem, printSignature]);
@@ -283,14 +283,19 @@ function AppContent() {
   return (
     <>
       <style>{`
+        /* 
+           VISIBILITY STRATEGY FOR PRINTING
+           Instead of display:none, we use visibility:hidden.
+           This keeps the printable area in the DOM tree, ensuring images (like the signature) are loaded.
+        */
         @media print {
-          /* 1. Visually hide body but keep images accessible/loaded */
-          body {
-            visibility: hidden;
+          /* Hide main app content but keep space */
+          body { 
+            visibility: hidden; 
           }
 
-          /* 2. Show the print container and force layout */
-          #printable-invoice-container {
+          /* Specifically target the print area and make it visible */
+          #printable-area {
             visibility: visible !important;
             position: absolute !important;
             left: 0 !important;
@@ -301,16 +306,15 @@ function AppContent() {
             background: white !important;
             opacity: 1 !important;
           }
-
-          /* 3. Ensure all children inside are visible */
-          #printable-invoice-container * {
+          
+          /* Ensure children are visible */
+          #printable-area * {
             visibility: visible !important;
           }
         }
       `}</style>
       
       {/* Root Application Wrapper with Dynamic Variables */}
-      {/* NOTE: We only use bg-slate-950. The CSS variables defined in style={} transform "slate" into "stone" automatically */}
       <div 
         className="h-full flex flex-col text-slate-100 overflow-hidden no-print bg-slate-950" 
         dir="rtl"
@@ -388,13 +392,8 @@ function AppContent() {
       </div>
 
       {/* Hidden Print Container: VISIBILITY STRATEGY */}
-      {/* 
-         We position it fixed off-screen with opacity 0 for normal view.
-         The @media print CSS above will force it to visibility: visible 
-         and position absolute top-left when printing.
-      */}
       <div 
-        id="printable-invoice-container" 
+        id="printable-area" 
         style={{ 
             position: 'fixed', 
             top: 0, 
@@ -402,12 +401,14 @@ function AppContent() {
             width: '210mm', 
             opacity: 0,
             pointerEvents: 'none', 
-            zIndex: -100 
+            zIndex: -100,
+            height: 0,
+            overflow: 'hidden'
         }}
       >
           <InvoiceClone 
               className="print-invoice"
-              key={printSignature ? `sig-${printSignature.length}` : 'no-sig'}
+              key={printSignature ? 'signed' : 'empty'} // Force remount if signature changes
               data={printingItem} 
               mode={printMode} 
               signatureImg={printSignature} 

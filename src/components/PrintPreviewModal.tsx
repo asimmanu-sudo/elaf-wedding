@@ -44,10 +44,12 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
     let finalSig = signatureImg;
     
     if (sigPad.current && !sigPad.current.isEmpty()) {
+       // Convert canvas to static Base64 PNG
        finalSig = sigPad.current.getTrimmedCanvas().toDataURL('image/png');
     }
 
     // 2. Pass to global print handler which handles the delay and DOM updates
+    // We pass the static image string, not the canvas reference
     onPrint(data, mode, finalSig);
   };
 

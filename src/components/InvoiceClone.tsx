@@ -103,7 +103,7 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
         <div className="text-center pb-2">
            <div className="h-20 flex items-end justify-center mb-2">
               {signatureImg ? (
-                  <img src={signatureImg} alt="Signature" className="h-full object-contain mix-blend-multiply opacity-90" />
+                  <img src={signatureImg} alt="Signature" className="h-16 object-contain mix-blend-multiply opacity-90" />
               ) : (
                   <div className="w-64 border-b-2 border-dashed border-slate-300"></div>
               )}
