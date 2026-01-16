@@ -3,7 +3,7 @@ import React, { useState, useRef } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
 import { X, Printer, Pen, Eraser, Check, MessageCircle, Share2, AlertTriangle } from 'lucide-react';
 import InvoiceClone from './InvoiceClone';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 
 interface PrintPreviewModalProps {
   data: any;
@@ -61,28 +61,31 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
         if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
             saveSignatureToState();
             // Tiny delay to let React render the signature image in the DOM
-            await new Promise(resolve => setTimeout(resolve, 150));
+            await new Promise(resolve => setTimeout(resolve, 200));
         }
 
-        // 2. High Quality Capture Settings for A4
-        // A4 Width at 96 DPI is approx 794px. We use a scale of 4 for very high quality (approx 300+ DPI equivalent).
-        const scale = 4;
+        // 2. High Quality Capture Settings for A4 using html-to-image
+        // A4 Width at 96 DPI is approx 794px. 
+        // pixelRatio: 4 ensures high density (approx 300+ DPI equivalent) for crisp text on mobile.
         const width = 794; 
-        
-        const canvas = await html2canvas(invoiceRef.current, {
-            scale: scale,
-            useCORS: true,
-            logging: false,
-            backgroundColor: '#ffffff',
-            width: width, 
-            windowWidth: width,
-            x: 0,
-            y: 0,
+        const height = 1123; // A4 height @ 96dpi
+
+        const dataUrl = await toPng(invoiceRef.current, {
+            cacheBust: true, // Prevents caching issues with external images (like logos)
+            pixelRatio: 4,   // High Quality for mobile zooming and printing
+            quality: 1.0,
+            backgroundColor: '#ffffff', // Force white background
+            width: width,
+            height: height,
+            style: {
+                // Ensure specific styles for capture
+                fontFamily: "'Tajawal', sans-serif",
+            }
         });
 
-        // 3. Convert to Blob & File
-        const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png', 1.0));
-        if (!blob) throw new Error('Failed to create image blob');
+        // 3. Convert DataURL to Blob & File
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
 
         const fileName = `invoice_${data.customerName || 'client'}_${Date.now()}.png`;
         const file = new File([blob], fileName, { type: 'image/png' });
@@ -97,7 +100,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
         } else {
             // Desktop Fallback
             const link = document.createElement('a');
-            link.href = canvas.toDataURL('image/png');
+            link.href = dataUrl;
             link.download = fileName;
             document.body.appendChild(link);
             link.click();
@@ -107,7 +110,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             const phone = data.customerPhone || data.bridePhone;
             if (phone) {
                 const cleanPhone = phone.replace(/\s+/g, '').replace(/-/g, '').replace('+', '');
-                if (confirm('تم تحميل الصورة. هل تريد فتح واتساب ويب لإرسالها؟')) {
+                if (confirm('تم تحميل الصورة بدقة عالية. هل تريد فتح واتساب ويب لإرسالها؟')) {
                     window.open(`https://wa.me/${cleanPhone}`, '_blank');
                 }
             } else {
