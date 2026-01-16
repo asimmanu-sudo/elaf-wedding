@@ -172,11 +172,11 @@ function AppContent() {
   // Async Print Logic
   useEffect(() => {
     if (isReadyToPrint) {
-        // Wait 800ms for the DOM and images (signature) to be fully ready before calling print
+        // Wait 1000ms (1 second) to ensure Base64 images are fully painted in DOM
         const timer = setTimeout(() => {
             window.print();
             setIsReadyToPrint(false); // Reset after print dialog opens
-        }, 800);
+        }, 1000);
         return () => clearTimeout(timer);
     }
   }, [isReadyToPrint, printingItem, printSignature]);
@@ -284,31 +284,27 @@ function AppContent() {
     <>
       <style>{`
         @media print {
-          /* 1. Hide everything initially */
-          body * {
+          /* 1. Visually hide body but keep images accessible/loaded */
+          body {
             visibility: hidden;
           }
 
-          /* 2. Unhide the print container and all its children */
-          #printable-invoice-container,
-          #printable-invoice-container * {
-            visibility: visible;
-          }
-
-          /* 3. Position the invoice at the top-left of the page */
+          /* 2. Show the print container and force layout */
           #printable-invoice-container {
+            visibility: visible !important;
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
             height: auto !important;
-            opacity: 1 !important;
-            z-index: 9999 !important;
+            z-index: 99999 !important;
             background: white !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: visible !important;
-            display: block !important;
+            opacity: 1 !important;
+          }
+
+          /* 3. Ensure all children inside are visible */
+          #printable-invoice-container * {
+            visibility: visible !important;
           }
         }
       `}</style>
@@ -411,7 +407,7 @@ function AppContent() {
       >
           <InvoiceClone 
               className="print-invoice"
-              key={printSignature ? `signed-${printSignature.length}` : 'unsigned'}
+              key={printSignature ? `sig-${printSignature.length}` : 'no-sig'}
               data={printingItem} 
               mode={printMode} 
               signatureImg={printSignature} 
