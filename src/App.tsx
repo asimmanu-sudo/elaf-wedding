@@ -1,3 +1,4 @@
+
 // src/App.tsx
 import React, { useState, useEffect } from 'react';
 import { Search, LogOut, CheckCircle, AlertTriangle, RefreshCw, Save } from 'lucide-react';
@@ -173,6 +174,7 @@ function AppContent() {
   useEffect(() => {
     if (isReadyToPrint) {
         // Wait 1000ms for images to render (especially signature base64)
+        // Note: Browsers will usually wait for DOM to be ready before print dialog
         const timer = setTimeout(() => {
             window.print();
             setIsReadyToPrint(false); // Reset after print dialog triggers
@@ -284,32 +286,23 @@ function AppContent() {
   return (
     <>
       <style>{`
-        /* 
-           PRINT STRATEGY
-           1. Screen: Hide #printable-area
-           2. Print: Hide .no-print elements, Show #printable-area
-           3. NO opacity/visibility hacks used for print
-        */
-        @media screen {
-          #printable-area { display: none; }
-        }
-
+        /* STANDARD PRINT PATTERN */
         @media print {
-          /* Hide main application UI */
+          /* 1. Hide the entire Main App Container */
           .no-print, .no-print * {
             display: none !important;
           }
 
-          /* Reset body and ensure white background */
+          /* Reset body and html for print */
           body, html {
-            background: white !important;
             height: auto !important;
             overflow: visible !important;
+            background-color: white !important;
             margin: 0 !important;
             padding: 0 !important;
           }
 
-          /* Display print area properly */
+          /* 2. Show ONLY the Printable Area */
           #printable-area {
             display: block !important;
             position: absolute !important;
@@ -319,20 +312,24 @@ function AppContent() {
             height: auto !important;
             margin: 0 !important;
             padding: 0 !important;
+            background-color: white !important;
             z-index: 9999 !important;
-            background: white !important;
+            overflow: visible !important;
+            opacity: 1 !important;
             visibility: visible !important;
           }
-          
-          /* Ensure content is visible */
+
+          /* Force Visibility for Children */
           #printable-area * {
             visibility: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
         }
       `}</style>
       
       {/* Root Application Wrapper with Dynamic Variables */}
-      {/* "no-print" class ensures this whole block is hidden during printing */}
+      {/* Added "no-print" class to hide this entire tree during printing */}
       <div 
         className="h-full flex flex-col text-slate-100 overflow-hidden no-print bg-slate-950" 
         dir="rtl"
@@ -409,11 +406,16 @@ function AppContent() {
         </div>
       </div>
 
-      {/* PRINT AREA (Hidden on screen via CSS, Visible on print) */}
-      <div id="printable-area">
+      {/* PRINT AREA */}
+      {/* 
+         Hidden on screen via inline style `display: 'none'`.
+         Shown on print via CSS `@media print { #printable-area { display: block !important; ... } }`.
+         This ensures images load in the background but aren't visible to the user until print preview.
+      */}
+      <div id="printable-area" style={{ display: 'none' }}>
           <InvoiceClone 
               className="print-invoice"
-              key={printJobId} // Force remount on every print to refresh images
+              key={printJobId} // Force remount on every print request to refresh images
               data={printingItem} 
               mode={printMode} 
               signatureImg={printSignature} 
