@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Truck, PackagePlus, MinusCircle, RotateCcw, Printer, Calculator, RefreshCw, AlertTriangle } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
@@ -524,8 +525,8 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             data={printModalData} 
             mode={printModalMode} 
             onClose={() => setPrintModalData(null)}
-            onPrint={(imageSrc) => {
-                onPrint(imageSrc); // Call global print logic
+            onPrint={(d, m) => {
+                onPrint(d, m); // Call global print logic
                 setPrintModalData(null); // Close modal
             }}
           />

@@ -9,6 +9,7 @@ import { User, UserRole } from './types';
 import { NAV_ITEMS } from './utils/constants';
 import { isIOS } from './utils/helpers';
 import { IconByName, Input, Button } from './components/UI';
+import InvoiceClone from './components/InvoiceClone';
 
 // Importing Views
 import HomeView from './views/HomeView';
@@ -127,11 +128,6 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<any[]>([]);
   
-  // Printing State - Now using Image Source
-  const [printImageSrc, setPrintImageSrc] = useState<string | null>(null);
-  const [isReadyToPrint, setIsReadyToPrint] = useState(false);
-  const [printJobId, setPrintJobId] = useState(0);
-
   // Theme State
   const [theme, setTheme] = useState(localStorage.getItem('app_theme') || 'default');
   
@@ -168,19 +164,6 @@ function AppContent() {
     };
   }, []);
 
-  // Async Print Logic
-  useEffect(() => {
-    if (isReadyToPrint) {
-        // Wait 800ms for images to render
-        // Even with display:none, React needs a tick to update the VDOM before print grabs it
-        const timer = setTimeout(() => {
-            window.print();
-            setIsReadyToPrint(false); // Reset after print dialog triggers
-        }, 800);
-        return () => clearTimeout(timer);
-    }
-  }, [isReadyToPrint, printJobId]);
-
   const showToast = (msg: string, type: 'success' | 'error' | 'warning' = 'success') => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, msg, type }]);
@@ -191,11 +174,87 @@ function AppContent() {
     if (user) cloudDb.add(COLLS.LOGS, { action, username: user.name, timestamp: new Date().toISOString(), details });
   };
 
-  // Image-Based Print Handler
-  const handlePrint = (imageSrc: string) => {
-    setPrintImageSrc(imageSrc);
-    setPrintJobId(prev => prev + 1); // Force effect trigger
-    setIsReadyToPrint(true);
+  // --- IFRAME PRINTING STRATEGY ---
+  const handlePrint = (item: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE' = 'DEPOSIT', signature?: string | null) => {
+    // 1. Create a hidden iframe
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    // 2. Prepare HTML Content
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+
+    doc.open();
+    doc.write(`
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+            <meta charset="utf-8" />
+            <title>طباعة</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+            <script>
+                window.tailwind.config = {
+                    theme: {
+                        extend: {
+                            fontFamily: { sans: ['Tajawal', 'sans-serif'] },
+                            colors: {
+                                brand: { 500: '#d946ef', 600: '#c026d3' },
+                                slate: { 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a', 950: '#020617' }
+                            }
+                        }
+                    }
+                }
+            </script>
+            <style>
+                body { background: white; margin: 0; padding: 0; }
+                @media print {
+                    @page { margin: 0; size: A4; }
+                    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                }
+            </style>
+        </head>
+        <body>
+            <div id="print-root"></div>
+        </body>
+        </html>
+    `);
+    doc.close();
+
+    // 3. Render Invoice into Iframe using createRoot
+    // We wait briefly for the scripts to load
+    setTimeout(() => {
+        const rootEl = doc.getElementById('print-root');
+        if (rootEl) {
+            const root = createRoot(rootEl);
+            root.render(
+                <InvoiceClone 
+                    data={item} 
+                    mode={mode} 
+                    signatureImg={signature} 
+                />
+            );
+
+            // 4. Trigger Print after render delay (allow images/fonts to load)
+            setTimeout(() => {
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+                
+                // Cleanup after print dialog closes (or a reasonable timeout)
+                // Note: There's no perfect event for "after print dialog closed" in all browsers.
+                // We leave it or remove it after a long timeout.
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 5000);
+            }, 1000);
+        }
+    }, 500);
   };
 
   const handleBackupExport = () => {
@@ -278,56 +337,6 @@ function AppContent() {
 
   return (
     <>
-      <style>{`
-        /* STANDARD PRINT PATTERN */
-        @media print {
-          /* 1. Hide the entire Main App Container & UI Elements */
-          .no-print, .no-print *, nav, header, main, .toasts-container {
-            display: none !important;
-          }
-          
-          /* Also hide root's direct children except the print area (if applicable) */
-          #root > *:not(#printable-area) {
-             display: none !important;
-          }
-
-          /* Reset body/html for clean print canvas */
-          body, html {
-            height: auto !important;
-            overflow: visible !important;
-            background-color: white !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-
-          /* 2. Show ONLY the Printable Area */
-          #printable-area {
-            display: block !important;
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background-color: white !important;
-            z-index: 99999 !important;
-            overflow: visible !important;
-            opacity: 1 !important;
-            visibility: visible !important;
-          }
-
-          /* Force Visibility for Children */
-          #printable-area * {
-            visibility: visible !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-        }
-      `}</style>
-      
-      {/* Root Application Wrapper with Dynamic Variables */}
-      {/* Added "no-print" class to hide this entire tree during printing */}
       <div 
         className="h-full flex flex-col text-slate-100 overflow-hidden no-print bg-slate-950" 
         dir="rtl"
@@ -402,17 +411,6 @@ function AppContent() {
             </div>
           ))}
         </div>
-      </div>
-
-      {/* PRINT AREA */}
-      <div id="printable-area" style={{ display: 'none' }}>
-         {printImageSrc && (
-           <img 
-              src={printImageSrc} 
-              alt="Print Invoice" 
-              style={{ width: '100%', height: 'auto', display: 'block' }} 
-           />
-         )}
       </div>
     </>
   );

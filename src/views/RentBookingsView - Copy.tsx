@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Printer, Ruler, Edit, Trash2, AlertTriangle, Calculator, RefreshCw, Check, MessageCircle, Send, Calendar as CalendarIcon, List, ChevronRight, ChevronLeft } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
@@ -744,8 +745,8 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
             data={printModalData} 
             mode={printModalMode} 
             onClose={() => setPrintModalData(null)}
-            onPrint={(imageSrc) => {
-                onPrint(imageSrc); // Call global print logic (hides UI, shows print div)
+            onPrint={(d, m) => {
+                onPrint(d, m); // Call global print logic (hides UI, shows print div)
                 setPrintModalData(null); // Close modal
             }}
           />

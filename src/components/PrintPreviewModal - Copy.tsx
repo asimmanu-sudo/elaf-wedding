@@ -9,13 +9,12 @@ interface PrintPreviewModalProps {
   data: any;
   mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE';
   onClose: () => void;
-  // Updated onPrint signature to accept the generated image URL string
-  onPrint: (imageSrc: string) => void;
+  onPrint: (data: any, mode: any, signature?: string | null) => void;
 }
 
 export default function PrintPreviewModal({ data, mode, onClose, onPrint }: PrintPreviewModalProps) {
   const [signatureImg, setSignatureImg] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   
   // Refs
   const sigPad = useRef<SignatureCanvas>(null);
@@ -38,28 +37,42 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
     return null;
   };
 
-  // --- Image Generation Helper ---
-  
-  const generateInvoiceImage = async () => {
-    if (!invoiceRef.current) return null;
+  // --- Print Handlers ---
 
-    // 1. Ensure signature is visually applied before capture
-    if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
-        saveSignatureToState();
-        // Tiny delay to let React render the signature image in the DOM
-        await new Promise(resolve => setTimeout(resolve, 200));
+  const handleFinalPrint = () => {
+    // 1. Capture signature directly from canvas if available (ensures latest drawing is used even if 'update' wasn't clicked)
+    let finalSig = signatureImg;
+    
+    if (sigPad.current && !sigPad.current.isEmpty()) {
+       // Convert canvas to static Base64 PNG
+       finalSig = sigPad.current.getTrimmedCanvas().toDataURL('image/png');
     }
 
-    // 2. High Quality Capture Settings for A4 using html-to-image
-    // A4 Width at 96 DPI is approx 794px. 
-    // pixelRatio: 3 ensures high density (~300 DPI equivalent) for crisp text/images.
-    const width = 794; 
-    const height = 1123; 
+    // 2. Pass to global print handler
+    onPrint(data, mode, finalSig);
+  };
+
+  const handleWhatsAppShare = async () => {
+    if (!invoiceRef.current) return;
+    setIsSharing(true);
 
     try {
+        // 1. Ensure signature is visually applied before capture
+        if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
+            saveSignatureToState();
+            // Tiny delay to let React render the signature image in the DOM
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
+
+        // 2. High Quality Capture Settings for A4 using html-to-image
+        // A4 Width at 96 DPI is approx 794px. 
+        // pixelRatio: 3 ensures high density (~300 DPI equivalent) for crisp text on mobile.
+        const width = 794; 
+        const height = 1123; 
+
         const dataUrl = await toPng(invoiceRef.current, {
             cacheBust: true, 
-            pixelRatio: 3,   // High resolution for print/mobile
+            pixelRatio: 3,   // Force 3x resolution (Critical for mobile quality)
             quality: 1.0,
             backgroundColor: '#ffffff', 
             width: width,
@@ -71,45 +84,15 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
                 fontFamily: "'Tajawal', sans-serif",
             }
         });
-        return dataUrl;
-    } catch (error) {
-        console.error("Image generation failed", error);
-        return null;
-    }
-  };
 
-  // --- Print Handlers ---
-
-  const handleFinalPrint = async () => {
-    setIsProcessing(true);
-    // Generate the image of the current view
-    const imgSrc = await generateInvoiceImage();
-    
-    if (imgSrc) {
-        // Send the image to the App to print
-        onPrint(imgSrc);
-    } else {
-        alert("حدث خطأ أثناء معالجة الصورة للطباعة");
-    }
-    setIsProcessing(false);
-  };
-
-  const handleWhatsAppShare = async () => {
-    if (!invoiceRef.current) return;
-    setIsProcessing(true);
-
-    try {
-        const dataUrl = await generateInvoiceImage();
-        if (!dataUrl) throw new Error('Failed to generate image');
-
-        // Convert DataURL to Blob & File for sharing
+        // 3. Convert DataURL to Blob & File
         const res = await fetch(dataUrl);
         const blob = await res.blob();
 
         const fileName = `invoice_${data.customerName || 'client'}_${Date.now()}.png`;
         const file = new File([blob], fileName, { type: 'image/png' });
         
-        // Share or Download
+        // 4. Share or Download
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({
                 files: [file],
@@ -129,7 +112,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             const phone = data.customerPhone || data.bridePhone;
             if (phone) {
                 const cleanPhone = phone.replace(/\s+/g, '').replace(/-/g, '').replace('+', '');
-                if (confirm('تم تحميل الصورة. هل تريد فتح واتساب ويب لإرسالها؟')) {
+                if (confirm('تم تحميل الصورة بدقة عالية. هل تريد فتح واتساب ويب لإرسالها؟')) {
                     window.open(`https://wa.me/${cleanPhone}`, '_blank');
                 }
             } else {
@@ -141,7 +124,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
         console.error('Share Error:', error);
         alert('حدث خطأ أثناء محاولة مشاركة الفاتورة. يرجى المحاولة مرة أخرى.');
     } finally {
-        setIsProcessing(false);
+        setIsSharing(false);
     }
   };
 
@@ -245,25 +228,17 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             <div className="space-y-3">
                <button 
                    onClick={handleFinalPrint} 
-                   disabled={isProcessing}
-                   className="w-full h-14 bg-brand-600 hover:bg-brand-500 text-white rounded-2xl text-sm font-black shadow-lg shadow-brand-500/20 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed group"
+                   className="w-full h-14 bg-brand-600 hover:bg-brand-500 text-white rounded-2xl text-sm font-black shadow-lg shadow-brand-500/20 flex items-center justify-center gap-3 transition-all active:scale-95 group"
                >
-                   {isProcessing ? (
-                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                   ) : (
-                     <>
-                        <Printer size={20} className="group-hover:scale-110 transition-transform" /> 
-                        <span>طباعة المستند</span>
-                     </>
-                   )}
+                   <Printer size={20} className="group-hover:scale-110 transition-transform" /> طباعة المستند
                </button>
 
                <button 
                   onClick={handleWhatsAppShare} 
-                  disabled={isProcessing}
+                  disabled={isSharing}
                   className="w-full h-14 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-sm font-black shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed group"
                >
-                   {isProcessing ? (
+                   {isSharing ? (
                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                    ) : (
                      <>

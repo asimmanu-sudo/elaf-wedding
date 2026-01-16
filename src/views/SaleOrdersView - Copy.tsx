@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Printer, Edit, Trash2, AlertTriangle, Calculator, RefreshCw, Ruler, Check, MessageCircle } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
@@ -442,8 +443,8 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
             data={printModalData} 
             mode={printModalMode} 
             onClose={() => setPrintModalData(null)}
-            onPrint={(imageSrc) => {
-                onPrint(imageSrc); // Call global print logic (hides UI, shows print div)
+            onPrint={(d, m) => {
+                onPrint(d, m); // Call global print logic (hides UI, shows print div)
                 setPrintModalData(null); // Close modal
             }}
           />
