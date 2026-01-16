@@ -173,10 +173,11 @@ function AppContent() {
   useEffect(() => {
     if (isReadyToPrint) {
         // Reduced wait time since element is always in DOM now (opacity 0)
+        // Increased to 800ms to ensure signatures are loaded properly
         const timer = setTimeout(() => {
             window.print();
             setIsReadyToPrint(false); // Reset
-        }, 300);
+        }, 800);
         return () => clearTimeout(timer);
     }
   }, [isReadyToPrint, printingItem, printSignature]);
@@ -286,6 +287,20 @@ function AppContent() {
         /* Hide entire app when printing */
         @media print {
           #root { display: none !important; }
+          
+          /* Force show print container */
+          #printable-invoice-container {
+            display: block !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+            z-index: 9999 !important;
+            background-color: white !important;
+          }
         }
 
         /* 
@@ -301,21 +316,8 @@ function AppContent() {
           z-index: -1000;
           opacity: 0;
           pointer-events: none;
-        }
-
-        /* Visible ONLY during print */
-        @media print {
-          #printable-invoice-container {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            z-index: 9999 !important;
-            opacity: 1 !important;
-            width: 100% !important;
-            height: auto !important;
-            overflow: visible !important;
-            display: block !important;
-          }
+          height: 0; /* Prevent scrollbar in normal view */
+          overflow: hidden;
         }
       `}</style>
       
@@ -405,9 +407,9 @@ function AppContent() {
       */}
       <div 
         id="printable-invoice-container" 
-        className="print-invoice"
       >
           <InvoiceClone 
+              className="print-invoice"
               key={printSignature ? `signed-${printSignature.length}` : 'unsigned'}
               data={printingItem} 
               mode={printMode} 
