@@ -172,11 +172,11 @@ function AppContent() {
   // Async Print Logic
   useEffect(() => {
     if (isReadyToPrint) {
-        // Wait 800ms for DOM update and image rendering
+        // Wait 1000ms for DOM update and image rendering
         const timer = setTimeout(() => {
             window.print();
             setIsReadyToPrint(false); // Reset
-        }, 800);
+        }, 1000);
         return () => clearTimeout(timer);
     }
   }, [isReadyToPrint, printingItem, printSignature]);
@@ -291,7 +291,8 @@ function AppContent() {
         @media print {
           /* Hide main app content but keep space */
           body { 
-            visibility: hidden; 
+            visibility: hidden !important; 
+            overflow: hidden !important;
           }
 
           /* Specifically target the print area and make it visible */
@@ -305,6 +306,8 @@ function AppContent() {
             z-index: 99999 !important;
             background: white !important;
             opacity: 1 !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
           
           /* Ensure children are visible */
@@ -399,16 +402,16 @@ function AppContent() {
             top: 0, 
             left: 0, 
             width: '210mm', 
+            minHeight: '296mm',
             opacity: 0,
             pointerEvents: 'none', 
-            zIndex: -100,
-            height: 0,
-            overflow: 'hidden'
+            zIndex: -1000,
+            backgroundColor: 'white'
         }}
       >
           <InvoiceClone 
               className="print-invoice"
-              key={printSignature ? 'signed' : 'empty'} // Force remount if signature changes
+              key={printSignature ? `signed-${printSignature.length}` : 'empty'}
               data={printingItem} 
               mode={printMode} 
               signatureImg={printSignature} 
