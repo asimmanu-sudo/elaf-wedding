@@ -172,11 +172,11 @@ function AppContent() {
   // Async Print Logic
   useEffect(() => {
     if (isReadyToPrint) {
-        // Wait for DOM render of the hidden div (increased to 800ms)
+        // Reduced wait time since element is always in DOM now (opacity 0)
         const timer = setTimeout(() => {
             window.print();
             setIsReadyToPrint(false); // Reset
-        }, 800);
+        }, 300);
         return () => clearTimeout(timer);
     }
   }, [isReadyToPrint, printingItem, printSignature]);
@@ -283,23 +283,39 @@ function AppContent() {
   return (
     <>
       <style>{`
+        /* Hide entire app when printing */
         @media print {
-          @page { size: A4; margin: 0; }
-          body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; }
-          #root { display: none; }
+          #root { display: none !important; }
+        }
+
+        /* 
+           OPACITY STRATEGY
+           - Always rendered but invisible on screen (opacity: 0, z-index: -1000).
+           - This ensures images (signatures) are loaded in DOM.
+        */
+        #printable-invoice-container {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 210mm;
+          z-index: -1000;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        /* Visible ONLY during print */
+        @media print {
           #printable-invoice-container {
-            display: block !important;
-            position: absolute;
+            position: absolute !important;
             top: 0 !important;
             left: 0 !important;
-            width: 210mm !important;
+            z-index: 9999 !important;
+            opacity: 1 !important;
+            width: 100% !important;
             height: auto !important;
             overflow: visible !important;
-            margin: 0 auto;
-            background-color: white;
-            z-index: 9999 !important;
+            display: block !important;
           }
-          .print-invoice { height: auto !important; overflow: visible !important; }
         }
       `}</style>
       
@@ -381,23 +397,18 @@ function AppContent() {
         </div>
       </div>
 
-      {/* Hidden Print Container: ZERO-HEIGHT HACK for Windows Print Preview */}
+      {/* Hidden Print Container: OPACITY STRATEGY */}
+      {/* 
+         It is always present in DOM but opacity=0.
+         This forces the browser to load and render inner images (like signature).
+         When printing, CSS changes it to opacity=1 and position=absolute.
+      */}
       <div 
         id="printable-invoice-container" 
         className="print-invoice"
-        style={{ 
-          position: 'fixed', 
-          top: 0, 
-          left: 0, 
-          width: '210mm', 
-          height: '0px', 
-          overflow: 'hidden',
-          zIndex: -1
-        }}
       >
-          {/* Key prop forces re-render when signature changes, ensuring image is fresh */}
           <InvoiceClone 
-              key={printSignature ? 'sig-added' : 'no-sig'}
+              key={printSignature ? `signed-${printSignature.length}` : 'unsigned'}
               data={printingItem} 
               mode={printMode} 
               signatureImg={printSignature} 
