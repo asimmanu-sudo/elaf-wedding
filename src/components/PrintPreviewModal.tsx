@@ -48,8 +48,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
        finalSig = sigPad.current.getTrimmedCanvas().toDataURL('image/png');
     }
 
-    // 2. Pass to global print handler which handles the delay and DOM updates
-    // We pass the static image string, not the canvas reference
+    // 2. Pass to global print handler
     onPrint(data, mode, finalSig);
   };
 
@@ -65,19 +64,20 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             await new Promise(resolve => setTimeout(resolve, 150));
         }
 
-        // 2. Robust Capture Settings
-        // We use scrollWidth/scrollHeight to capture the full A4 even if scrolled
+        // 2. High Quality Capture Settings for A4
+        // A4 Width at 96 DPI is approx 794px. We use a scale of 4 for very high quality (approx 300+ DPI equivalent).
+        const scale = 4;
+        const width = 794; 
+        
         const canvas = await html2canvas(invoiceRef.current, {
-            scale: 2, // High quality
+            scale: scale,
             useCORS: true,
             logging: false,
             backgroundColor: '#ffffff',
-            width: invoiceRef.current.scrollWidth,
-            height: invoiceRef.current.scrollHeight,
-            windowWidth: invoiceRef.current.scrollWidth,
-            windowHeight: invoiceRef.current.scrollHeight,
+            width: width, 
+            windowWidth: width,
             x: 0,
-            y: 0
+            y: 0,
         });
 
         // 3. Convert to Blob & File
@@ -143,14 +143,14 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
 
         {/* 
            INVOICE CONTAINER 
-           - No Transform/Scale.
            - Explicit A4 dimensions.
            - Pointer events disabled to prevent text selection while scrolling.
         */}
         <div 
             ref={invoiceRef}
-            className="bg-white shadow-2xl relative"
+            className="bg-white shadow-2xl relative origin-top"
             style={{ 
+                width: '210mm',
                 minWidth: '210mm', 
                 maxWidth: '210mm',
                 minHeight: '296mm',

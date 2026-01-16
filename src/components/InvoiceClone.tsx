@@ -295,11 +295,14 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
             {/* Receipt Terms */}
             <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 flex-1 flex flex-col">
                 <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-200 pb-2">شروط الاستلام والإرجاع</h4>
-                <ol className="list-decimal list-outside pr-4 space-y-2 overflow-hidden">
+                <div className="space-y-1">
                     {RECEIPT_TERMS.map((term, i) => (
-                        <li key={i} className="text-xs text-slate-700 font-bold leading-relaxed">{term}</li>
+                        <div key={i} className="flex gap-2 mb-1 items-start">
+                            <span className="font-black text-slate-400 text-[10px] pt-0.5">{i + 1}.</span>
+                            <p className="flex-1 text-[11px] text-slate-600 font-bold leading-relaxed text-justify">{term}</p>
+                        </div>
                     ))}
-                </ol>
+                </div>
             </div>
         </div>
         <Footer />
@@ -383,13 +386,14 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
           {/* Terms & Conditions */}
           <div className="flex-1 bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col justify-start mb-6">
               <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 border-b border-slate-200 pb-2">الشروط والأحكام (Terms & Conditions)</h4>
-              <ol className="list-decimal list-outside pr-4 space-y-1.5 overflow-hidden">
+              <div className="space-y-1">
                 {termsText.map((term, i) => (
-                    <li key={i} className="text-[11px] text-slate-600 font-bold leading-relaxed text-justify pl-2">
-                        {term}
-                    </li>
+                    <div key={i} className="flex gap-2 mb-1 items-start">
+                        <span className="font-black text-slate-400 text-[10px] pt-0.5">{i + 1}.</span>
+                        <p className="flex-1 text-[11px] text-slate-600 font-bold leading-relaxed text-justify">{term}</p>
+                    </div>
                 ))}
-              </ol>
+              </div>
           </div>
       </div>
       <Footer />
