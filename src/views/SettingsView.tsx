@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, Key, Edit, UserPlus, RotateCcw, BarChart3, AlertTriangle, Palette, Check, Wallet, Calculator, MessageCircle, Save, ShieldCheck, Download, Upload, FileJson, Loader } from 'lucide-react';
+import { Users, Key, Edit, UserPlus, RotateCcw, BarChart3, AlertTriangle, Check, Wallet, Calculator, MessageCircle, Save, ShieldCheck, Download, Upload, FileJson, Loader, Trash2, Eye, ShieldAlert, Database, Wrench, Lock } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { backupService } from '../services/backup';
 import { UserRole, BookingStatus } from '../types';
@@ -8,9 +8,9 @@ import { Button, Input, Modal, ConfirmModal, Card } from '../components/UI';
 import { PERMISSIONS_CATEGORIES } from '../utils/constants';
 import { today, formatCurrency, DEFAULT_WA_TEMPLATES } from '../utils/helpers';
 
-export default function SettingsView({ user, users, bookings, sales, finance, dresses, hasPerm, showToast, addLog, onThemeChange }: any) {
+export default function SettingsView({ user, users, bookings, sales, finance, dresses, hasPerm, showToast, addLog }: any) {
+  const [activeTab, setActiveTab] = useState('staff');
   const [modal, setModal] = useState<any>(null);
-  const [currentTheme, setCurrentTheme] = useState(localStorage.getItem('app_theme') || 'default');
   const [waConfig, setWaConfig] = useState<any>(null);
 
   // Backup & Restore State
@@ -19,6 +19,12 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreStatus, setRestoreStatus] = useState<string>('');
 
+  // Security Logs State
+  const [sensitiveLogs, setSensitiveLogs] = useState<any[]>([]);
+
+  // Permission Check for Admin Tabs
+  const isAdminOrManager = hasPerm('admin_reset') || hasPerm('view_settings') || user.role === UserRole.ADMIN;
+
   useEffect(() => {
     // Load WhatsApp Templates
     const fetchWaConfig = async () => {
@@ -26,22 +32,27 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
         setWaConfig(doc || DEFAULT_WA_TEMPLATES);
     };
     fetchWaConfig();
-  }, []);
 
-  const handleThemeSwitch = (theme: string) => {
-    localStorage.setItem('app_theme', theme);
-    setCurrentTheme(theme);
-    
-    // Notify the rest of the app immediately
-    window.dispatchEvent(new Event('theme-change'));
-    
-    if (onThemeChange) onThemeChange(theme);
-    showToast(`تم تغيير المظهر إلى ${theme === 'warm_gold' ? 'الذهبي الفاخر' : 'الافتراضي'}`);
-  };
+    // Load Sensitive Logs (Only if admin)
+    if (isAdminOrManager) {
+        const fetchSecurityLogs = () => {
+        const unsub = cloudDb.subscribe(COLLS.LOGS, (allLogs) => {
+            const keywords = ['حذف', 'Delete', 'تراجع', 'Undo', 'تصفير', 'Reset', 'تعديل', 'Edit'];
+            const filtered = allLogs
+                .filter((l: any) => keywords.some(k => (l.action || '').includes(k)))
+                .sort((a: any, b: any) => b.timestamp.localeCompare(a.timestamp))
+                .slice(0, 100); 
+            setSensitiveLogs(filtered);
+        });
+        return unsub;
+        };
+        const unsubLogs = fetchSecurityLogs();
+        return () => unsubLogs();
+    }
+  }, [isAdminOrManager]);
 
-  const handleResetAll = async () => {
-    setModal({ type: 'CONFIRM_RESET' });
-  };
+  // --- ACTIONS & HANDLERS ---
+  const handleResetAll = async () => { setModal({ type: 'CONFIRM_RESET' }); };
 
   const executeResetAll = async () => {
      await cloudDb.clearAll();
@@ -50,52 +61,40 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
      setTimeout(() => window.location.reload(), 1200);
   };
 
-  const handleFixFinance = async () => {
-    setModal({ type: 'CONFIRM_FIX' });
-  };
+  const handleFixFinance = async () => { setModal({ type: 'CONFIRM_FIX' }); };
 
   const executeFixFinance = async () => {
     let count = 0;
     const financeIds = new Set(finance.map((f:any) => f.relatedId).filter(Boolean));
-
     // Fix Bookings
     for (const b of bookings) {
         if (b.paidDeposit > 0 && !financeIds.has(b.id)) {
             await cloudDb.add(COLLS.FINANCE, {
                 amount: b.paidDeposit,
-                type: 'INCOME',
-                category: 'حجز إيجار',
+                type: 'INCOME', category: 'حجز إيجار',
                 notes: `عربون حجز فستان ${b.dressName} للعروس ${b.customerName} (تصحيح تلقائي)`,
-                date: b.createdAt || today,
-                relatedId: b.id
+                date: b.createdAt || today, relatedId: b.id
             });
             count++;
         }
     }
-
     // Fix Sales
     for (const s of sales) {
         if (s.deposit > 0 && !financeIds.has(s.id)) {
              await cloudDb.add(COLLS.FINANCE, {
-               amount: s.deposit, 
-               type: 'INCOME', 
-               category: 'عربون تفصيل',
+               amount: s.deposit, type: 'INCOME', category: 'عربون تفصيل',
                notes: `عربون تفصيل فستان كود ${s.factoryCode} للعروس ${s.brideName} (تصحيح تلقائي)`,
-               date: s.orderDate || today, 
-               relatedId: s.id
+               date: s.orderDate || today, relatedId: s.id
              });
              count++;
         }
     }
-    
     showToast(`تم إضافة ${count} سجل مالي مفقود`);
     addLog('تصحيح مالي', `تم تشغيل التصحيح التلقائي وإضافة ${count} سجل`);
     setModal(null);
   };
 
-  const handleRecalculateCounts = async () => {
-    setModal({ type: 'CONFIRM_RECALC' });
-  };
+  const handleRecalculateCounts = async () => { setModal({ type: 'CONFIRM_RECALC' }); };
 
   const executeRecalculateCounts = async () => {
     let updatedCount = 0;
@@ -111,9 +110,7 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
     setModal(null);
   };
 
-  // --- BACKUP & RESTORE LOGIC ---
   const handleBackupNow = () => {
-      // Gather current data from props
       const fullData = { dresses, bookings, sales, finance, users, logs: [] }; 
       const success = backupService.exportData(fullData);
       if(success) showToast('تم تحميل النسخة الاحتياطية');
@@ -123,18 +120,12 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-
       const reader = new FileReader();
       reader.onload = (event) => {
           try {
               const jsonContent = event.target?.result as string;
               const data = JSON.parse(jsonContent);
-              
-              // Basic Validation
-              if (!data.dresses && !data.bookings && !data.users) {
-                  throw new Error("ملف غير صالح: لا يحتوي على بيانات النظام المعروفة");
-              }
-              
+              if (!data.dresses && !data.bookings && !data.users) throw new Error("ملف غير صالح");
               setRestoreFileContent(data);
               setModal({ type: 'CONFIRM_RESTORE_FILE' });
           } catch (err) {
@@ -143,82 +134,42 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
           }
       };
       reader.readAsText(file);
-      // Reset input so same file can be selected again if needed
       e.target.value = '';
   };
 
   const executeRestoreFromFile = async () => {
       if (!restoreFileContent) return;
-      
-      setModal(null); // Close confirmation modal
-      setIsRestoring(true);
-      setRestoreStatus('جاري تحليل البيانات...');
-
+      setModal(null); setIsRestoring(true); setRestoreStatus('جاري تحليل البيانات...');
       try {
-          const collectionsMap: any = {
-              dresses: COLLS.DRESSES,
-              bookings: COLLS.BOOKINGS,
-              sales: COLLS.SALES,
-              finance: COLLS.FINANCE,
-              users: COLLS.USERS,
-              logs: COLLS.LOGS
-          };
-
+          const collectionsMap: any = { dresses: COLLS.DRESSES, bookings: COLLS.BOOKINGS, sales: COLLS.SALES, finance: COLLS.FINANCE, users: COLLS.USERS, logs: COLLS.LOGS };
           let totalRestored = 0;
           const collections = Object.keys(restoreFileContent);
-
           for (const key of collections) {
               const dbCollectionName = collectionsMap[key];
               const items = restoreFileContent[key];
-
               if (dbCollectionName && Array.isArray(items) && items.length > 0) {
                   setRestoreStatus(`جاري استعادة ${key} (${items.length} سجل)...`);
-                  
-                  // Process in chunks to avoid UI freeze or quota limits
                   for (const item of items) {
                       if (!item.id) continue;
-
-                      // Sanitize data: remove undefined fields (Firestore doesn't like them)
                       const cleanItem = JSON.parse(JSON.stringify(item));
-
-                      try {
-                          // Use explicitly added 'set' to create/overwrite doc with specific ID
-                          await cloudDb.set(dbCollectionName, item.id, cleanItem);
-                          totalRestored++;
-                      } catch (innerErr) {
-                          console.warn(`Failed to restore item ${item.id} in ${key}:`, innerErr);
-                          // Continue to next item
-                      }
+                      try { await cloudDb.set(dbCollectionName, item.id, cleanItem); totalRestored++; } catch (innerErr) { console.warn(`Failed to restore item ${item.id}`, innerErr); }
                   }
               }
           }
-
           addLog('استعادة نسخة', `تم استعادة النظام من ملف. السجلات المعالجة: ${totalRestored}`);
           setRestoreStatus('تمت العملية بنجاح!');
-          
-          setTimeout(() => {
-              alert(`تم استعادة ${totalRestored} سجل بنجاح. سيتم إعادة تحميل النظام الآن.`);
-              window.location.reload();
-          }, 500);
-
+          setTimeout(() => { alert(`تم استعادة ${totalRestored} سجل. سيتم إعادة التحميل.`); window.location.reload(); }, 500);
       } catch (err: any) {
           console.error("Restore Error:", err);
           showToast(`حدث خطأ أثناء الاستعادة: ${err.message}`, 'error');
-          setIsRestoring(false);
-          setRestoreStatus('');
+          setIsRestoring(false); setRestoreStatus('');
       }
   };
 
   // --- OPENING BALANCE WIZARD LOGIC ---
-  // State for Opening Balance Wizard
   const [openingState, setOpeningState] = useState({ egp: 0, sdg: 0, rate: 50 });
-
-  const handleOpeningBalance = () => {
-      setModal({ type: 'OPENING_BALANCE' });
-  };
-
+  const handleOpeningBalance = () => { setModal({ type: 'OPENING_BALANCE' }); };
   const executeOpeningBalance = async () => {
-      // 1. Calculate Current Balances (Theoretically)
       const balances = { EGP: 0, SDG: 0, USD: 0 };
       finance.forEach((f: any) => {
           if (f.isFuture) return;
@@ -227,53 +178,23 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
           if (f.type === 'INCOME' || f.type === 'EXCHANGE_IN') balances[curr] += amt;
           if (f.type === 'EXPENSE' || f.type === 'EXCHANGE_OUT') balances[curr] -= amt;
       });
-
-      // 2. Zero Out Existing Balances (Legacy Adjustment)
       for (const [currency, balance] of Object.entries(balances)) {
           if (Math.abs(balance) > 0) {
               await cloudDb.add(COLLS.FINANCE, {
-                  type: balance > 0 ? 'EXPENSE' : 'INCOME', // Counteract the balance
-                  category: 'تسوية فروقات سابقة',
-                  amount: currency === 'EGP' ? Math.abs(balance) : 0, // EGP Impact
-                  currency: currency,
-                  currencyAmount: Math.abs(balance),
-                  exchangeRate: 1,
-                  notes: `تصفير رصيد ${currency} القديم (${formatCurrency(balance)}) لبدء فترة جديدة.`,
-                  date: today
+                  type: balance > 0 ? 'EXPENSE' : 'INCOME', category: 'تسوية فروقات سابقة',
+                  amount: currency === 'EGP' ? Math.abs(balance) : 0, currency: currency,
+                  currencyAmount: Math.abs(balance), exchangeRate: 1,
+                  notes: `تصفير رصيد ${currency} القديم (${formatCurrency(balance)}) لبدء فترة جديدة.`, date: today
               });
           }
       }
-
-      // 3. Add New Opening Balances
-      // EGP Cash
       if (openingState.egp > 0) {
-          await cloudDb.add(COLLS.FINANCE, {
-              type: 'INCOME',
-              category: 'رصيد افتتاحي (كاش)',
-              amount: openingState.egp,
-              currency: 'EGP',
-              currencyAmount: openingState.egp,
-              exchangeRate: 1,
-              notes: 'بداية الرصيد الفعلي في الدرج',
-              date: today
-          });
+          await cloudDb.add(COLLS.FINANCE, { type: 'INCOME', category: 'رصيد افتتاحي (كاش)', amount: openingState.egp, currency: 'EGP', currencyAmount: openingState.egp, exchangeRate: 1, notes: 'بداية الرصيد الفعلي في الدرج', date: today });
       }
-
-      // SDG Bankak
       if (openingState.sdg > 0) {
-          const equivalentEGP = openingState.sdg * (openingState.rate || 0); // EGP Value for reports
-          await cloudDb.add(COLLS.FINANCE, {
-              type: 'INCOME',
-              category: 'رصيد افتتاحي (بنكك)',
-              amount: equivalentEGP,
-              currency: 'SDG',
-              currencyAmount: openingState.sdg,
-              exchangeRate: openingState.rate,
-              notes: `رصيد بنكك الافتتاحي (${openingState.sdg} SDG) بسعر صرف ${openingState.rate}`,
-              date: today
-          });
+          const equivalentEGP = openingState.sdg * (openingState.rate || 0);
+          await cloudDb.add(COLLS.FINANCE, { type: 'INCOME', category: 'رصيد افتتاحي (بنكك)', amount: equivalentEGP, currency: 'SDG', currencyAmount: openingState.sdg, exchangeRate: openingState.rate, notes: `رصيد بنكك الافتتاحي (${openingState.sdg} SDG) بسعر صرف ${openingState.rate}`, date: today });
       }
-
       showToast('تم ضبط الأرصدة الافتتاحية بنجاح');
       addLog('ضبط أرصدة', `تم تصفير الأرصدة القديمة وضبط EGP: ${openingState.egp}, SDG: ${openingState.sdg}`);
       setModal(null);
@@ -294,90 +215,160 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
       setModal(null);
   };
 
+  const handleDeleteUser = (u: any) => { setModal({ type: 'CONFIRM_DELETE_USER', targetUser: u }); };
+  const executeDeleteUser = async (u: any) => {
+      try {
+          await cloudDb.delete(COLLS.USERS, u.id);
+          showToast(`تم حذف الموظف ${u.name}`);
+          addLog('حذف موظف', `قام ${user.name} بحذف حساب الموظف ${u.name} (${u.username})`);
+          setModal(null);
+      } catch (err) { showToast('فشل الحذف', 'error'); }
+  };
+
+  // --- TABS CONFIG ---
+  const tabs = [
+      { id: 'staff', label: 'الموظفين', icon: Users, show: true },
+      { id: 'security', label: 'الأمان', icon: ShieldAlert, show: isAdminOrManager },
+      { id: 'backup', label: 'النسخ', icon: Database, show: isAdminOrManager },
+      { id: 'maintenance', label: 'الصيانة', icon: Wrench, show: isAdminOrManager },
+  ].filter(t => t.show);
+
   return (
-    <div className="space-y-12 animate-fade-in pb-10 italic">
-       <div className="text-center py-10 relative">
-          <div className="w-32 h-32 bg-brand-500 rounded-[3rem] flex items-center justify-center mx-auto mb-8 shadow-2xl">
-            <Users size={56} className="text-white"/>
-          </div>
-          <h2 className="text-4xl font-black text-white tracking-tight leading-none uppercase">{user.name}</h2>
-          <p className="text-brand-500 font-black mt-3 tracking-[0.4em] uppercase text-xs">@{user.username} • {user.role}</p>
-          <Button variant="ghost" onClick={() => setModal({ type: 'CHANGE_PASS' })} className="mx-auto mt-10 !rounded-2xl px-10 h-14 border-white/10 italic"><Key size={18}/> تغيير كلمة المرور</Button>
+    <div className="space-y-6 animate-fade-in pb-10 italic">
+       
+       {/* TABS NAVIGATION */}
+       <div className="flex bg-slate-900/60 p-1.5 rounded-2xl border border-white/5 sticky top-0 z-50 backdrop-blur-xl shadow-lg overflow-x-auto custom-scrollbar">
+        {tabs.map((t) => (
+          <button 
+            key={t.id}
+            onClick={() => setActiveTab(t.id)} 
+            className={`flex-1 h-12 rounded-xl text-[11px] font-black transition-all uppercase tracking-widest flex items-center justify-center gap-2 whitespace-nowrap min-w-[100px] ${activeTab === t.id ? 'bg-brand-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+          >
+            <t.icon size={16} /> {t.label}
+          </button>
+        ))}
        </div>
 
-       {/* THEME SWITCHER */}
-       <Card>
-          <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2"><Palette size={20}/> مظهر التطبيق (App Theme)</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             <button 
-               onClick={() => handleThemeSwitch('default')}
-               className={`p-6 rounded-2xl border-2 transition-all flex items-center justify-between group relative overflow-hidden ${currentTheme === 'default' ? 'border-brand-500 bg-brand-500/10' : 'border-white/5 bg-slate-900/50 hover:bg-slate-900'}`}
-             >
-                <div className="flex items-center gap-4 z-10">
-                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-fuchsia-500 to-purple-700 shadow-lg"></div>
-                   <div className="text-right">
-                      <p className="font-black text-white">الافتراضي (أزرق/بارد)</p>
-                      <p className="text-[10px] text-slate-400 font-bold">Original Cool Vibes</p>
-                   </div>
+       {/* TAB 1: STAFF & PROFILE */}
+       {activeTab === 'staff' && (
+         <div className="space-y-8 animate-fade-in">
+             {/* Current User Card */}
+            <div className="bg-slate-950 border border-white/5 rounded-[2.5rem] p-8 text-center relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-brand-500 via-purple-500 to-brand-500"></div>
+                <div className="w-24 h-24 bg-slate-900 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-white/5 shadow-2xl group-hover:scale-110 transition-transform duration-500">
+                    <Users size={40} className="text-brand-500"/>
                 </div>
-                {currentTheme === 'default' && <div className="w-8 h-8 bg-brand-500 rounded-full flex items-center justify-center text-white"><Check size={16}/></div>}
-             </button>
-
-             <button 
-               onClick={() => handleThemeSwitch('warm_gold')}
-               className={`p-6 rounded-2xl border-2 transition-all flex items-center justify-between group relative overflow-hidden ${currentTheme === 'warm_gold' ? 'border-[#D4AF37] bg-[#D4AF37]/10' : 'border-white/5 bg-slate-900/50 hover:bg-slate-900'}`}
-             >
-                <div className="flex items-center gap-4 z-10">
-                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#D4AF37] to-[#8a6d1c] shadow-lg border border-[#F5EFE0]/20"></div>
-                   <div className="text-right">
-                      <p className="font-black text-white">الملكي (ذهبي/دافئ)</p>
-                      <p className="text-[10px] text-slate-400 font-bold">Luxury Warm Gold</p>
-                   </div>
+                <h2 className="text-2xl font-black text-white tracking-tight">{user.name}</h2>
+                <p className="text-brand-500 font-bold mt-1 tracking-widest uppercase text-[10px]">@{user.username} • {user.role}</p>
+                <div className="mt-6 flex justify-center">
+                    <Button variant="ghost" onClick={() => setModal({ type: 'CHANGE_PASS' })} className="!rounded-xl h-12 px-6 text-xs border-white/10"><Key size={14}/> تغيير كلمة المرور</Button>
                 </div>
-                {currentTheme === 'warm_gold' && <div className="w-8 h-8 bg-[#D4AF37] rounded-full flex items-center justify-center text-white"><Check size={16}/></div>}
-             </button>
-          </div>
-       </Card>
+            </div>
 
-       {hasPerm('admin_reset') && (
-         <div className="space-y-10">
-            {/* BACKUP & RESTORE CENTER */}
-            <Card className="border-brand-500/20 bg-brand-900/5">
-                <div className="flex items-center gap-3 mb-6">
+            {/* Staff List */}
+            <div className="space-y-4">
+                <div className="flex justify-between items-end px-4">
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">فريق العمل</h3>
+                    {hasPerm('manage_users') && <Button onClick={() => setModal({ type: 'ADD_USER' })} className="!h-10 !px-4 text-xs !rounded-xl bg-slate-800 border border-white/5 hover:bg-slate-700"><UserPlus size={14}/> إضافة موظف</Button>}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {(users || []).map((u: any) => {
+                        const displayName = u.name || 'مستخدم غير معروف';
+                        const isSelf = u.id === user.id;
+                        const isProtected = u.username === 'admin' || u.id === 'master';
+                        const canManage = hasPerm('manage_users');
+                        const canDelete = hasPerm('delete_users') && !isSelf && !isProtected;
+
+                        return (
+                            <Card key={u.id} className="flex justify-between items-center group !p-4">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-2xl bg-slate-950 flex items-center justify-center text-slate-500 font-bold border border-white/5">{displayName.charAt(0)}</div>
+                                    <div>
+                                        <p className="font-bold text-white text-sm">{displayName} {isSelf && <span className="text-[9px] bg-brand-500/20 text-brand-400 px-2 py-0.5 rounded-md mr-1">أنت</span>}</p>
+                                        <p className="text-[10px] text-slate-500 font-bold mt-0.5 uppercase">@{u.username} • {u.role}</p>
+                                    </div>
+                                </div>
+                                {canManage && (
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setModal({ ...u, type: 'EDIT_USER' })} className="w-9 h-9 rounded-xl bg-slate-950 border border-white/5 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"><Edit size={14}/></button>
+                                        {canDelete && <button onClick={() => handleDeleteUser(u)} className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-colors"><Trash2 size={14}/></button>}
+                                    </div>
+                                )}
+                            </Card>
+                        );
+                    })}
+                </div>
+            </div>
+         </div>
+       )}
+
+       {/* TAB 2: SECURITY */}
+       {activeTab === 'security' && isAdminOrManager && (
+         <div className="space-y-6 animate-fade-in">
+             <Card 
+                className="border-red-500/20 bg-red-900/5 hover:bg-red-900/10 hover:border-red-500/40 transition-all cursor-pointer group"
+                onClick={() => setModal({ type: 'SECURITY_LOGS' })}
+            >
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center border border-red-500/30 group-hover:scale-110 transition-transform">
+                            <ShieldAlert size={28} />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-black text-white">سجل العمليات الحساسة</h3>
+                            <p className="text-[10px] text-slate-400 font-bold mt-1">مراقبة عمليات الحذف، التعديل المالي، والتصفير</p>
+                        </div>
+                    </div>
+                    <div className="w-10 h-10 bg-red-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-red-500/20"><Eye size={20}/></div>
+                </div>
+            </Card>
+            
+            <div className="p-6 bg-slate-950 border border-white/5 rounded-3xl text-center opacity-50">
+                <Lock size={32} className="mx-auto mb-2 text-slate-600"/>
+                <p className="text-xs text-slate-500">ميزات أمان إضافية قريباً (2FA, Login History)</p>
+            </div>
+         </div>
+       )}
+
+       {/* TAB 3: BACKUP */}
+       {activeTab === 'backup' && isAdminOrManager && (
+         <div className="space-y-6 animate-fade-in">
+             {/* LOADING OVERLAY FOR RESTORE */}
+            {isRestoring && (
+                <div className="fixed inset-0 z-[2000] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center">
+                    <Loader size={64} className="text-brand-500 animate-spin mb-4" />
+                    <h2 className="text-2xl font-black text-white mb-2">جاري استعادة البيانات...</h2>
+                    <p className="text-sm text-slate-400 font-bold">{restoreStatus}</p>
+                    <p className="text-xs text-red-400 mt-4 font-bold">يرجى عدم إغلاق الصفحة</p>
+                </div>
+            )}
+
+             <Card className="border-brand-500/20 bg-brand-900/5">
+                <div className="flex items-center gap-3 mb-8">
                     <div className="w-10 h-10 rounded-full bg-brand-500 flex items-center justify-center text-white shadow-lg shadow-brand-500/20">
                         <ShieldCheck size={22} />
                     </div>
                     <div>
-                        <h3 className="text-lg font-black text-white">أمان البيانات والنسخ الاحتياطي</h3>
-                        <p className="text-[10px] text-slate-400 font-bold">Backup & Restore Center</p>
+                        <h3 className="text-lg font-black text-white">النسخ الاحتياطي والاستعادة</h3>
+                        <p className="text-[10px] text-slate-400 font-bold">حفظ بيانات النظام محلياً أو استعادتها</p>
                     </div>
                 </div>
-                
-                {/* LOADING OVERLAY FOR RESTORE */}
-                {isRestoring && (
-                    <div className="fixed inset-0 z-[2000] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center">
-                        <Loader size={64} className="text-brand-500 animate-spin mb-4" />
-                        <h2 className="text-2xl font-black text-white mb-2">جاري استعادة البيانات...</h2>
-                        <p className="text-sm text-slate-400 font-bold">{restoreStatus}</p>
-                        <p className="text-xs text-red-400 mt-4 font-bold">يرجى عدم إغلاق الصفحة</p>
-                    </div>
-                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <button 
                         onClick={handleBackupNow}
-                        className="flex flex-col items-center justify-center p-6 bg-slate-900 border border-white/5 rounded-3xl hover:bg-slate-800 hover:border-brand-500/30 transition-all group"
+                        className="flex flex-col items-center justify-center p-8 bg-slate-900 border border-white/5 rounded-3xl hover:bg-slate-800 hover:border-emerald-500/30 transition-all group"
                     >
-                        <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-500 mb-3 group-hover:scale-110 transition-transform">
-                            <Download size={28} />
+                        <div className="w-16 h-16 bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-500 mb-4 group-hover:scale-110 transition-transform">
+                            <Download size={32} />
                         </div>
-                        <h4 className="font-black text-white text-sm">حفظ نسخة احتياطية الآن</h4>
-                        <p className="text-[10px] text-slate-500 mt-1">تنزيل ملف JSON على جهازك</p>
+                        <h4 className="font-black text-white">تحميل نسخة احتياطية</h4>
+                        <p className="text-[10px] text-slate-500 mt-1">تنزيل ملف JSON</p>
                     </button>
 
                     <button 
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex flex-col items-center justify-center p-6 bg-slate-900 border border-white/5 rounded-3xl hover:bg-slate-800 hover:border-orange-500/30 transition-all group relative overflow-hidden"
+                        className="flex flex-col items-center justify-center p-8 bg-slate-900 border border-white/5 rounded-3xl hover:bg-slate-800 hover:border-orange-500/30 transition-all group relative overflow-hidden"
                     >
                         <input 
                             type="file" 
@@ -386,61 +377,93 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
                             className="hidden" 
                             onChange={handleFileSelect}
                         />
-                        <div className="w-14 h-14 bg-orange-500/10 rounded-2xl flex items-center justify-center text-orange-500 mb-3 group-hover:scale-110 transition-transform">
-                            <Upload size={28} />
+                        <div className="w-16 h-16 bg-orange-500/10 rounded-2xl flex items-center justify-center text-orange-500 mb-4 group-hover:scale-110 transition-transform">
+                            <Upload size={32} />
                         </div>
-                        <h4 className="font-black text-white text-sm">استعادة البيانات من ملف</h4>
-                        <p className="text-[10px] text-slate-500 mt-1">تحديث قاعدة البيانات بملف سابق</p>
+                        <h4 className="font-black text-white">استعادة من ملف</h4>
+                        <p className="text-[10px] text-slate-500 mt-1">تحديث قاعدة البيانات</p>
                     </button>
                 </div>
             </Card>
+         </div>
+       )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(users as any[]).map((u: any) => (
-                <Card key={u.id} className="flex justify-between items-center group">
-                   <div className="flex items-center gap-4">
-                     <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-slate-500 font-bold border border-white/5 italic">{(u.name as string).charAt(0)}</div>
-                     <div><p className="font-black text-white text-base leading-tight tracking-tight">{u.name}</p><p className="text-[10px] text-slate-600 font-bold tracking-widest mt-1 italic uppercase">@{u.username}</p></div>
-                   </div>
-                   <div className="flex gap-2">
-                     <Button variant="ghost" onClick={() => setModal({ ...u, type: 'EDIT_USER' })} className="!w-10 !h-10 !p-0 !rounded-xl transition-transform hover:scale-110"><Edit size={16}/></Button>
-                   </div>
-                </Card>
-              ))}
-            </div>
-            
-            <div className="grid grid-cols-1 gap-4">
-               <Button onClick={() => setModal({ type: 'ADD_USER' })} className="w-full !rounded-[2rem] h-18 text-base shadow-xl shadow-brand-900/10 uppercase tracking-widest font-black italic"><UserPlus size={22}/> إضافة موظف جديد</Button>
-               
-               <div className="space-y-4">
-                  <h4 className="text-white font-bold text-lg px-2 mt-4">أدوات الصيانة والإدارة</h4>
-                  
-                  <Button onClick={() => setModal({ type: 'WA_TEMPLATES' })} className="w-full !rounded-[2rem] h-16 text-base bg-emerald-600 hover:bg-emerald-500 shadow-xl shadow-emerald-900/10 uppercase tracking-widest font-black italic">
-                      <MessageCircle size={22} className="ml-2"/> تخصيص رسائل واتساب (Templates)
+       {/* TAB 4: MAINTENANCE */}
+       {activeTab === 'maintenance' && isAdminOrManager && (
+         <div className="space-y-6 animate-fade-in">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Button onClick={() => setModal({ type: 'WA_TEMPLATES' })} className="h-20 text-sm bg-emerald-600 hover:bg-emerald-500 shadow-xl shadow-emerald-900/10 !rounded-3xl border border-white/5">
+                      <MessageCircle size={22} className="ml-2"/> قوالب رسائل واتساب
                   </Button>
 
-                  <Button onClick={handleFixFinance} className="w-full !rounded-[2rem] h-16 text-base bg-blue-600 hover:bg-blue-500 shadow-xl shadow-blue-900/10 uppercase tracking-widest font-black italic">
-                      <RotateCcw size={22} className="ml-2"/> مراجعة وتصحيح السجلات المالية
+                  <Button onClick={handleFixFinance} className="h-20 text-sm bg-blue-600 hover:bg-blue-500 shadow-xl shadow-blue-900/10 !rounded-3xl border border-white/5">
+                      <RotateCcw size={22} className="ml-2"/> تصحيح السجلات المالية
                   </Button>
-                  <Button onClick={handleRecalculateCounts} className="w-full !rounded-[2rem] h-16 text-base bg-orange-600 hover:bg-orange-500 shadow-xl shadow-orange-900/10 uppercase tracking-widest font-black italic">
-                      <BarChart3 size={22} className="ml-2"/> تحديث عدادات الإيجار (Recalculate)
+
+                  <Button onClick={handleRecalculateCounts} className="h-20 text-sm bg-orange-600 hover:bg-orange-500 shadow-xl shadow-orange-900/10 !rounded-3xl border border-white/5">
+                      <BarChart3 size={22} className="ml-2"/> تحديث عدادات الإيجار
                   </Button>
                   
-                  <Button onClick={handleOpeningBalance} className="w-full !rounded-[2rem] h-16 text-base bg-slate-700 hover:bg-slate-600 shadow-xl shadow-slate-900/10 uppercase tracking-widest font-black italic">
-                      <Wallet size={22} className="ml-2"/> ضبط الرصيد الافتتاحي (صفر العداد)
+                  <Button onClick={handleOpeningBalance} className="h-20 text-sm bg-slate-700 hover:bg-slate-600 shadow-xl shadow-slate-900/10 !rounded-3xl border border-white/5">
+                      <Wallet size={22} className="ml-2"/> ضبط الرصيد الافتتاحي
                   </Button>
-               </div>
-            </div>
+             </div>
 
-            <div className="p-12 bg-red-950/20 border border-red-500/20 rounded-[4rem] text-center mt-20 relative overflow-hidden">
-               <AlertTriangle size={48} className="mx-auto text-red-500 mb-6" />
-               <h4 className="text-red-500 font-black text-2xl mb-4 italic">منطقة الخطر</h4>
-               <Button variant="danger" onClick={handleResetAll} className="w-full h-18 text-lg font-black !rounded-[2.5rem]">تصفير النظام بالكامل</Button>
+             <div className="mt-12 p-8 bg-red-950/20 border border-red-500/20 rounded-[3rem] text-center relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-full h-1 bg-red-500/30"></div>
+                <AlertTriangle size={48} className="mx-auto text-red-500 mb-6" />
+                <h4 className="text-red-500 font-black text-2xl mb-2">منطقة الخطر</h4>
+                <p className="text-xs text-red-400/60 font-bold mb-6 max-w-md mx-auto">الإجراءات هنا غير قابلة للتراجع وتؤثر على كامل النظام</p>
+                <Button variant="danger" onClick={handleResetAll} className="w-full h-16 text-lg font-black !rounded-2xl shadow-lg shadow-red-900/20">تصفير النظام بالكامل</Button>
             </div>
          </div>
        )}
 
-       {/* CONFIRMATION MODAL FOR RESTORE */}
+       {/* --- MODALS --- */}
+       
+       {/* SECURITY LOGS MODAL */}
+       {modal?.type === 'SECURITY_LOGS' && (
+         <Modal title="سجل العمليات الحساسة" onClose={() => setModal(null)} size="lg">
+            <div className="space-y-4">
+                <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl mb-4">
+                    <p className="text-xs text-red-400 font-bold flex items-center gap-2">
+                        <AlertTriangle size={16} />
+                        يتم عرض عمليات الحذف، التراجع، التصفير، والتعديلات المالية فقط.
+                    </p>
+                </div>
+                <div className="overflow-x-auto max-h-[60vh] custom-scrollbar">
+                    <table className="w-full text-right border-collapse">
+                        <thead className="sticky top-0 bg-slate-900 z-10">
+                            <tr className="border-b border-white/10 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                <th className="p-3">الموظف</th>
+                                <th className="p-3">العملية</th>
+                                <th className="p-3">الوقت</th>
+                                <th className="p-3 w-1/2">التفاصيل</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sensitiveLogs.length === 0 ? (
+                                <tr><td colSpan={4} className="p-8 text-center text-slate-500 text-xs font-bold">لا توجد عمليات حساسة مسجلة حديثاً</td></tr>
+                            ) : (
+                                sensitiveLogs.map((log: any) => (
+                                    <tr key={log.id} className="border-b border-white/5 hover:bg-red-500/5 transition-colors bg-red-500/5">
+                                        <td className="p-3 text-xs font-bold text-white">{log.username}</td>
+                                        <td className="p-3 text-xs font-black text-red-400 uppercase">{log.action}</td>
+                                        <td className="p-3 text-[10px] font-mono text-slate-400" dir="ltr">{new Date(log.timestamp).toLocaleString()}</td>
+                                        <td className="p-3 text-[10px] text-slate-300 leading-relaxed max-w-xs">{log.details}</td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+                <div className="pt-4 border-t border-white/5">
+                    <Button variant="ghost" onClick={() => setModal(null)} className="w-full">إغلاق السجل</Button>
+                </div>
+            </div>
+         </Modal>
+       )}
+
        {modal?.type === 'CONFIRM_RESTORE_FILE' && (
          <ConfirmModal 
            title="استعادة البيانات"
@@ -460,6 +483,18 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
            onConfirm={executeResetAll}
            onCancel={() => setModal(null)}
            confirmText="نعم، دمر البيانات"
+         />
+       )}
+
+       {modal?.type === 'CONFIRM_DELETE_USER' && (
+         <ConfirmModal 
+           title="حذف حساب موظف"
+           msg={`هل أنت متأكد من حذف الموظف "${modal.targetUser.name}"؟ لا يمكن التراجع عن هذا الإجراء وسيتم فقدان صلاحيات الدخول الخاصة به.`}
+           onConfirm={() => executeDeleteUser(modal.targetUser)}
+           onCancel={() => setModal(null)}
+           confirmText="نعم، حذف نهائي"
+           variant="danger"
+           icon={Trash2}
          />
        )}
 
@@ -487,7 +522,6 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
          />
        )}
 
-       {/* WA TEMPLATES EDITOR */}
        {modal?.type === 'WA_TEMPLATES' && (
          <Modal title="محرر قوالب واتساب" onClose={() => setModal(null)} size="lg">
             <div className="mb-6 bg-slate-950 p-4 rounded-xl border border-white/5">
@@ -521,7 +555,6 @@ export default function SettingsView({ user, users, bookings, sales, finance, dr
          </Modal>
        )}
 
-       {/* OPENING BALANCE MODAL */}
        {modal?.type === 'OPENING_BALANCE' && (
          <Modal title="ضبط الرصيد الافتتاحي" onClose={() => setModal(null)} size="md">
             <div className="space-y-6">

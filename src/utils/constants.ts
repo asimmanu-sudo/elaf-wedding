@@ -129,6 +129,7 @@ export const PERMISSIONS_CATEGORIES = [
       { id: 'manage_users', label: 'إدارة الموظفين' },
       { id: 'view_logs', label: 'سجل النشاطات' },
       { id: 'view_settings', label: 'الإعدادات العامة' },
+      { id: 'delete_users', label: 'حذف حسابات الموظفين (خطر)' },
       { id: 'admin_reset', label: 'تصفير النظام (دمار شامل)' },
     ]
   }
