@@ -7,10 +7,11 @@ import { MEASUREMENT_FIELDS } from '../utils/constants';
 interface InvoiceCloneProps {
   data: any;
   mode?: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE';
-  signatureImg?: string | null; // Added signature prop
+  signatureImg?: string | null;
+  className?: string; // Added className prop
 }
 
-const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', signatureImg }) => {
+const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', signatureImg, className = '' }) => {
   if (!data) return null;
 
   const invDate = (data.createdAt || data.orderDate || today).split('-').reverse().join(' / ');
@@ -137,7 +138,7 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
   if (mode === 'SCHEDULE') {
     const list = Array.isArray(data) ? data : [];
     return (
-      <div id="printable-invoice-container" className="print-invoice" style={containerStyle} dir="rtl">
+      <div className={className} style={containerStyle} dir="rtl">
         <Header title="جدول الحجوزات" subtitle="BOOKINGS SCHEDULE" />
         <div className="flex-1 min-h-0 mt-4">
           <table className="w-full border-collapse text-right">
@@ -178,7 +179,7 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
     for (let i = 0; i < half; i++) { rows.push({ left: tableFields[i], right: tableFields[i + half] }); }
 
     return (
-      <div id="printable-invoice-container" className="print-invoice" style={containerStyle} dir="rtl">
+      <div className={className} style={containerStyle} dir="rtl">
         <Header title="نموذج المقاسات" subtitle="MEASUREMENTS SHEET" />
         
         <div className="flex-1 flex flex-col gap-8">
@@ -249,7 +250,7 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
   // 3. RECEIPT / PICKUP MODE
   if (mode === 'RECEIPT') {
     return (
-      <div id="printable-invoice-container" className="print-invoice" style={containerStyle} dir="rtl">
+      <div className={className} style={containerStyle} dir="rtl">
         <Header title="سند استلام / إرجاع" subtitle="RECEIPT VOUCHER" />
         <div className="flex-1 flex flex-col justify-between gap-6">
             <div className="flex flex-col gap-6">
@@ -312,7 +313,7 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
   const termsText = isTailoring ? SALE_TERMS : RENT_TERMS;
 
   return (
-    <div id="printable-invoice-container" className="print-invoice" style={containerStyle} dir="rtl">
+    <div className={className} style={containerStyle} dir="rtl">
       <Header title={title} subtitle={`${subTitle} #${data.id ? data.id.slice(-6).toUpperCase() : '---'}`} />
       
       {/* Main Content Wrapper - Distributes Vertical Space */}

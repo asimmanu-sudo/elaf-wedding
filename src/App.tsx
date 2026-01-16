@@ -368,9 +368,12 @@ function AppContent() {
         </div>
       </div>
 
-      <div id="printable-invoice-container">
-        {/* Pass the captured signature to the invoice template */}
-        <InvoiceClone data={printingItem} mode={printMode} signatureImg={printSignature} />
+      <div id="printable-invoice-container" className="print-invoice">
+          <InvoiceClone 
+              data={printingItem} 
+              mode={printMode} 
+              signatureImg={printSignature} 
+          />
       </div>
     </>
   );
