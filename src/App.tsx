@@ -290,15 +290,16 @@ function AppContent() {
           #printable-invoice-container {
             display: block !important;
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 210mm;
-            height: 100%;
+            top: 0 !important;
+            left: 0 !important;
+            width: 210mm !important;
+            height: auto !important;
+            overflow: visible !important;
             margin: 0 auto;
             background-color: white;
-            z-index: 9999;
+            z-index: 9999 !important;
           }
-          .print-invoice { height: 296mm !important; overflow: hidden !important; page-break-after: always; }
+          .print-invoice { height: auto !important; overflow: visible !important; }
         }
       `}</style>
       
@@ -380,17 +381,16 @@ function AppContent() {
         </div>
       </div>
 
-      {/* Hidden Print Container: OFF-SCREEN RENDERING */}
-      {/* We use off-screen positioning instead of display:none to force DOM rendering for images like signature */}
+      {/* Hidden Print Container: ZERO-HEIGHT HACK for Windows Print Preview */}
       <div 
         id="printable-invoice-container" 
         className="print-invoice"
         style={{ 
           position: 'fixed', 
           top: 0, 
-          left: '-10000px', 
+          left: 0, 
           width: '210mm', 
-          height: 'auto', 
+          height: '0px', 
           overflow: 'hidden',
           zIndex: -1
         }}
