@@ -176,18 +176,18 @@ function AppContent() {
     if (user) cloudDb.add(COLLS.LOGS, { action, username: user.name, timestamp: new Date().toISOString(), details });
   };
 
-  // Updated Print Handler to accept optional signature
+  // Updated Print Handler to accept optional signature with delay
   const handlePrint = (item: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE' = 'DEPOSIT', signature?: string | null) => {
+    // 1. Update State
     setPrintMode(mode);
     setPrintingItem(item);
     setPrintSignature(signature || null);
     
-    // Wait for state updates to reflect in DOM before printing
+    // 2. Wait for state updates to reflect in DOM before printing (Async)
+    // 500ms delay gives the browser time to render the image src
     setTimeout(() => { 
       window.print(); 
-      // Optional: Clear signature after print to avoid stale state if printing multiple items
-      // setPrintSignature(null); 
-    }, 800);
+    }, 500);
   };
 
   const handleBackupExport = () => {

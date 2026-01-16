@@ -40,15 +40,14 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
   // --- Print Handlers ---
 
   const handleFinalPrint = () => {
-    // 1. Synchronous Capture: Get the signature directly from the canvas instance
+    // 1. Capture signature directly from canvas if available (ensures latest drawing is used)
     let finalSig = signatureImg;
     
     if (sigPad.current && !sigPad.current.isEmpty()) {
-       // If the user signed but didn't press "Save", we grab it now.
        finalSig = sigPad.current.getTrimmedCanvas().toDataURL('image/png');
     }
 
-    // 2. Pass directly to the print function (skipping state delays)
+    // 2. Pass to global print handler which handles the delay
     onPrint(data, mode, finalSig);
   };
 
