@@ -173,12 +173,12 @@ function AppContent() {
   // Async Print Logic
   useEffect(() => {
     if (isReadyToPrint) {
-        // Wait 1000ms for images to render (especially signature base64)
-        // Note: Browsers will usually wait for DOM to be ready before print dialog
+        // Wait 800ms for images to render (especially signature base64)
+        // Even with display:none, React needs a tick to update the VDOM before print grabs it
         const timer = setTimeout(() => {
             window.print();
             setIsReadyToPrint(false); // Reset after print dialog triggers
-        }, 1000);
+        }, 800);
         return () => clearTimeout(timer);
     }
   }, [isReadyToPrint, printJobId]);
@@ -288,12 +288,17 @@ function AppContent() {
       <style>{`
         /* STANDARD PRINT PATTERN */
         @media print {
-          /* 1. Hide the entire Main App Container */
-          .no-print, .no-print * {
+          /* 1. Hide the entire Main App Container & UI Elements */
+          .no-print, .no-print *, nav, header, main, .toasts-container {
             display: none !important;
           }
+          
+          /* Also hide root's direct children except the print area (if applicable) */
+          #root > *:not(#printable-area) {
+             display: none !important;
+          }
 
-          /* Reset body and html for print */
+          /* Reset body/html for clean print canvas */
           body, html {
             height: auto !important;
             overflow: visible !important;
@@ -313,7 +318,7 @@ function AppContent() {
             margin: 0 !important;
             padding: 0 !important;
             background-color: white !important;
-            z-index: 9999 !important;
+            z-index: 99999 !important;
             overflow: visible !important;
             opacity: 1 !important;
             visibility: visible !important;
@@ -394,7 +399,7 @@ function AppContent() {
           </div>
         </nav>
 
-        <div className="fixed bottom-24 left-4 right-4 z-[2000] space-y-2 pointer-events-none">
+        <div className="fixed bottom-24 left-4 right-4 z-[2000] space-y-2 pointer-events-none toasts-container">
           {toasts.map((t: any) => (
             <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-3xl shadow-2xl border pointer-events-auto animate-slide-up mx-auto max-sm ${
               t.type === 'error' ? 'bg-red-950/90 border-red-500/50 text-red-100' : t.type === 'warning' ? 'bg-orange-950/90 border-orange-500/50 text-orange-100' : 'bg-emerald-950/90 border-emerald-500/50 text-emerald-100'
@@ -410,7 +415,7 @@ function AppContent() {
       {/* 
          Hidden on screen via inline style `display: 'none'`.
          Shown on print via CSS `@media print { #printable-area { display: block !important; ... } }`.
-         This ensures images load in the background but aren't visible to the user until print preview.
+         This pattern forces the browser to re-layout the print area when print media is active.
       */}
       <div id="printable-area" style={{ display: 'none' }}>
           <InvoiceClone 
