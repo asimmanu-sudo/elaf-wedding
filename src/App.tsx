@@ -172,14 +172,14 @@ function AppContent() {
   // Async Print Logic
   useEffect(() => {
     if (isReadyToPrint) {
-        // Wait for DOM render of the hidden div
+        // Wait for DOM render of the hidden div (increased to 800ms)
         const timer = setTimeout(() => {
             window.print();
             setIsReadyToPrint(false); // Reset
-        }, 500);
+        }, 800);
         return () => clearTimeout(timer);
     }
-  }, [isReadyToPrint]);
+  }, [isReadyToPrint, printingItem, printSignature]);
 
   const showToast = (msg: string, type: 'success' | 'error' | 'warning' = 'success') => {
     const id = Date.now();
@@ -380,9 +380,24 @@ function AppContent() {
         </div>
       </div>
 
-      {/* Hidden Print Container: Holds the specific ID/Class required by CSS */}
-      <div id="printable-invoice-container" className="print-invoice">
+      {/* Hidden Print Container: OFF-SCREEN RENDERING */}
+      {/* We use off-screen positioning instead of display:none to force DOM rendering for images like signature */}
+      <div 
+        id="printable-invoice-container" 
+        className="print-invoice"
+        style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: '-10000px', 
+          width: '210mm', 
+          height: 'auto', 
+          overflow: 'hidden',
+          zIndex: -1
+        }}
+      >
+          {/* Key prop forces re-render when signature changes, ensuring image is fresh */}
           <InvoiceClone 
+              key={printSignature ? 'sig-added' : 'no-sig'}
               data={printingItem} 
               mode={printMode} 
               signatureImg={printSignature} 
