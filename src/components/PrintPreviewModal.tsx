@@ -9,7 +9,6 @@ interface PrintPreviewModalProps {
   data: any;
   mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE';
   onClose: () => void;
-  // Updated signature: receives data, mode, and the generated image source
   onPrint: (data: any, mode: any, imageSrc?: string | null) => void;
 }
 
@@ -37,58 +36,43 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
     return null;
   };
 
-  // --- Image Generation Helper ---
+  // --- Print Handlers ---
 
-  const generateInvoiceImage = async () => {
-    if (!invoiceRef.current) return null;
-
-    // 1. Capture signature if present but not yet saved to state
-    if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
-        saveSignatureToState();
-        // Tiny delay to let React render the signature image in the DOM
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    // 2. High Quality Capture Settings for A4
-    // pixelRatio: 3 ensures very high density (~300 DPI) for crisp text
-    const width = 794; 
-    const height = 1123; 
+  const handleFinalPrint = async () => {
+    if (!invoiceRef.current) return;
+    setIsProcessing(true);
 
     try {
+        // 1. Ensure signature is captured if present
+        if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
+            saveSignatureToState();
+            // Tiny delay to allow React to re-render the DOM with the signature image
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        // 2. Generate Image with Robust Settings
         const dataUrl = await toPng(invoiceRef.current, {
-            cacheBust: true, 
-            pixelRatio: 3,
             quality: 1.0,
-            backgroundColor: '#ffffff', 
-            width: width,
-            height: height,
+            pixelRatio: 2,       // Higher resolution for better print quality
+            cacheBust: true,     // Critical: Force bypass browser cache for external resources
+            skipAutoScale: true, // Prevent weird scaling issues
+            backgroundColor: '#ffffff',
             style: {
                 transform: 'scale(1)',
                 transformOrigin: 'top left',
                 fontFamily: "'Tajawal', sans-serif",
             }
         });
-        return dataUrl;
-    } catch (error) {
-        console.error("Image generation failed", error);
-        return null;
-    }
-  };
+        
+        // 3. Send image to Parent (App.tsx)
+        onPrint(data, mode, dataUrl);
 
-  // --- Print Handlers ---
-
-  const handleFinalPrint = async () => {
-    setIsProcessing(true);
-    // Generate the image of the invoice
-    const imgSrc = await generateInvoiceImage();
-    
-    if (imgSrc) {
-        // Pass the generated image to the parent onPrint handler
-        onPrint(data, mode, imgSrc);
-    } else {
-        alert("حدث خطأ أثناء معالجة الصورة للطباعة");
+    } catch (err) {
+        console.error("فشل توليد صورة الطباعة:", err);
+        alert("حدث خطأ أثناء تجهيز الملف للطباعة. يرجى المحاولة مرة أخرى.");
+    } finally {
+        setIsProcessing(false);
     }
-    setIsProcessing(false);
   };
 
   const handleWhatsAppShare = async () => {
@@ -96,8 +80,18 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
     setIsProcessing(true);
 
     try {
-        const dataUrl = await generateInvoiceImage();
-        if (!dataUrl) throw new Error('Failed to generate image');
+        // Ensure signature captured
+        if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
+            saveSignatureToState();
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        const dataUrl = await toPng(invoiceRef.current, {
+            quality: 1.0,
+            pixelRatio: 2,
+            cacheBust: true,
+            backgroundColor: '#ffffff'
+        });
 
         const res = await fetch(dataUrl);
         const blob = await res.blob();
@@ -150,6 +144,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             <X size={20} />
         </button>
 
+        {/* DOM Container to Capture */}
         <div 
             ref={invoiceRef}
             className="bg-white shadow-2xl relative origin-top"

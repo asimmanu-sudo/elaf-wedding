@@ -135,19 +135,6 @@ function AppContent() {
     };
   }, []);
 
-  // Handle Print Trigger
-  useEffect(() => {
-    if (isReadyToPrint && printImageSrc) {
-        // Short timeout to ensure image rendering
-        const timer = setTimeout(() => {
-            window.print();
-            setIsReadyToPrint(false);
-            setPrintImageSrc(null); // Optional: Clear after print
-        }, 500);
-        return () => clearTimeout(timer);
-    }
-  }, [isReadyToPrint, printImageSrc]);
-
   const showToast = (msg: string, type: 'success' | 'error' | 'warning' = 'success') => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, msg, type }]);
@@ -212,6 +199,7 @@ function AppContent() {
           /* Only show printable area and its children */
           #printable-area, #printable-area * {
             visibility: visible !important;
+            display: block !important;
           }
 
           /* Reset body styles for print */
@@ -310,12 +298,24 @@ function AppContent() {
       </div>
 
       {/* PRINT IMAGE CONTAINER (Always in DOM but hidden via CSS until print) */}
-      <div id="printable-area" style={{ position: 'fixed', top: 0, left: 0, opacity: 0, zIndex: -100, pointerEvents: 'none' }}>
+      <div id="printable-area" style={{ display: 'none' }}>
          {printImageSrc && (
            <img 
               src={printImageSrc} 
               alt="Printed Invoice" 
-              style={{ width: '100%', height: 'auto', display: 'block' }} 
+              style={{ width: '100%' }}
+              onLoad={() => {
+                   window.print();
+                   setTimeout(() => {
+                       setIsReadyToPrint(false);
+                       setPrintImageSrc(null);
+                   }, 1000);
+              }}
+              onError={(e) => {
+                   console.error("Print image error:", e);
+                   alert("فشل تحميل صورة الطباعة. حاول مرة أخرى.");
+                   setIsReadyToPrint(false);
+              }}
            />
          )}
       </div>
