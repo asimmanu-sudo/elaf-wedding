@@ -9,7 +9,7 @@ interface PrintPreviewModalProps {
   data: any;
   mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE';
   onClose: () => void;
-  onPrint: (data: any, mode: any, imageSrc?: string | null) => void;
+  onPrint: (data: any, mode: any) => void;
 }
 
 export default function PrintPreviewModal({ data, mode, onClose, onPrint }: PrintPreviewModalProps) {
@@ -52,52 +52,9 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
 
   // --- Print Handlers ---
 
-  const handleFinalPrint = async () => {
-    if (!invoiceRef.current) return;
-    setIsProcessing(true);
-
-    try {
-        // 1. Ensure signature is captured if present
-        if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
-            saveSignatureToState();
-            // Tiny delay to allow React to re-render the DOM with the signature image
-            await new Promise(resolve => setTimeout(resolve, 100));
-        }
-
-        // 2. Preload Images (Wait for Logos/QRs to be ready)
-        await preloadImages(invoiceRef.current);
-
-        // 3. Generate Image as Base64
-        const dataUrl = await toPng(invoiceRef.current, {
-            quality: 1.0,
-            pixelRatio: 2,       
-            cacheBust: true,     
-            skipAutoScale: true, 
-            backgroundColor: '#ffffff',
-            style: {
-                transform: 'scale(1)',
-                transformOrigin: 'top left',
-                fontFamily: "'Tajawal', sans-serif",
-            }
-        });
-        
-        // 4. Convert Base64 to Blob URL (Magic Fix for Large Strings)
-        const res = await fetch(dataUrl);
-        const blob = await res.blob();
-        
-        // Explicitly set type to image/png to avoid ambiguity
-        const cleanBlob = new Blob([blob], { type: 'image/png' });
-        const blobUrl = URL.createObjectURL(cleanBlob);
-
-        // 5. Send clean Blob URL to Parent
-        onPrint(data, mode, blobUrl);
-
-    } catch (err) {
-        console.error("فشل توليد صورة الطباعة:", err);
-        alert("حدث خطأ أثناء تجهيز الملف للطباعة. يرجى المحاولة مرة أخرى.");
-    } finally {
-        setIsProcessing(false);
-    }
+  const handleFinalPrint = () => {
+    // Simply trigger the parent's print handler which uses native window.print()
+    onPrint(data, mode);
   };
 
   const handleWhatsAppShare = async () => {
@@ -241,17 +198,10 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             <div className="space-y-3">
                <button 
                    onClick={handleFinalPrint} 
-                   disabled={isProcessing}
-                   className="w-full h-14 bg-brand-600 hover:bg-brand-500 text-white rounded-2xl text-sm font-black shadow-lg shadow-brand-500/20 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed group"
+                   className="w-full h-14 bg-brand-600 hover:bg-brand-500 text-white rounded-2xl text-sm font-black shadow-lg shadow-brand-500/20 flex items-center justify-center gap-3 transition-all active:scale-95 group"
                >
-                   {isProcessing ? (
-                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                   ) : (
-                     <>
-                        <Printer size={20} className="group-hover:scale-110 transition-transform" /> 
-                        <span>طباعة المستند</span>
-                     </>
-                   )}
+                   <Printer size={20} className="group-hover:scale-110 transition-transform" /> 
+                   <span>طباعة المستند</span>
                </button>
 
                <button 

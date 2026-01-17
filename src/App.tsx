@@ -9,6 +9,7 @@ import { User, UserRole } from './types';
 import { NAV_ITEMS } from './utils/constants';
 import { isIOS } from './utils/helpers';
 import { IconByName, Input, Button } from './components/UI';
+import InvoiceClone from './components/InvoiceClone';
 
 // Importing Views
 import HomeView from './views/HomeView';
@@ -102,9 +103,9 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<any[]>([]);
   
-  // Printing State - Image Based
-  const [printImageSrc, setPrintImageSrc] = useState<string | null>(null);
-  const [isReadyToPrint, setIsReadyToPrint] = useState(false);
+  // Printing State - Standard DOM
+  const [printingItem, setPrintingItem] = useState<any>(null);
+  const [printMode, setPrintMode] = useState<any>('DEPOSIT');
 
   // Theme & Data
   const [theme, setTheme] = useState(localStorage.getItem('app_theme') || 'default');
@@ -145,14 +146,17 @@ function AppContent() {
     if (user) cloudDb.add(COLLS.LOGS, { action, username: user.name, timestamp: new Date().toISOString(), details });
   };
 
-  // Image-Based Print Handler (Using Blob URL)
-  const handlePrint = (item: any, mode: string, imageSrc?: string | null) => {
-    if (imageSrc) {
-        setPrintImageSrc(imageSrc);
-        setIsReadyToPrint(true);
-    } else {
-        showToast("فشل تحميل صورة الطباعة", "error");
-    }
+  // Standard DOM Print Handler
+  const handlePrint = (item: any, mode: string) => {
+    setPrintingItem(item);
+    setPrintMode(mode);
+    
+    // Give React a moment to render the hidden invoice before invoking print
+    setTimeout(() => {
+        window.print();
+        // Clear after print dialog closes (or short delay)
+        setTimeout(() => setPrintingItem(null), 1000);
+    }, 500);
   };
 
   const hasPerm = (p: string) => user?.role === UserRole.ADMIN || user?.permissions.includes(p);
@@ -191,48 +195,45 @@ function AppContent() {
     <>
       <style>{`
         @media print {
-          /* Hide everything in body */
+          /* 1. Hide Everything by default */
           body * {
             visibility: hidden;
           }
           
-          /* Show printable area */
+          /* 2. Hide Main App Containers specifically */
+          #root, .app-container, .no-print, header, nav, main, .toasts-container {
+            display: none !important;
+          }
+
+          /* 3. Show Printable Area and its children */
           #printable-area {
+            display: block !important;
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
+            width: 100% !important;
+            height: auto !important;
             visibility: visible !important;
-            display: block !important;
             z-index: 99999 !important;
-            opacity: 1 !important;
+            background: white !important;
           }
 
-          /* Reset body styles for print */
+          #printable-area * {
+            visibility: visible !important;
+          }
+
+          /* 4. Reset Body/HTML for print */
           body, html {
             margin: 0 !important;
             padding: 0 !important;
             background-color: white !important;
             overflow: visible !important;
-            height: 100% !important;
-          }
-
-          /* Ensure image displays correctly */
-          #printable-area img {
-            width: 100% !important;
             height: auto !important;
-            display: block !important;
-            max-width: 100% !important;
-            visibility: visible !important;
-          }
-
-          /* Hide app elements specifically */
-          .no-print, header, nav, main, .toasts-container {
-            display: none !important;
           }
         }
       `}</style>
       
-      <div className="h-full flex flex-col text-slate-100 overflow-hidden no-print bg-slate-950" dir="rtl" style={themeStyles as React.CSSProperties}>
+      <div className="h-full flex flex-col text-slate-100 overflow-hidden no-print bg-slate-950 app-container" dir="rtl" style={themeStyles as React.CSSProperties}>
         {/* Backup Banner */}
         {user.role === UserRole.ADMIN && isBackupNeeded && (
             <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between shadow-md relative z-[150]">
@@ -290,38 +291,15 @@ function AppContent() {
         </div>
       </div>
 
-      {/* PRINT IMAGE CONTAINER - Off-screen rendering to ensure paint */}
-      <div id="printable-area" style={{ 
-          position: 'fixed', 
-          left: '-10000px', 
-          top: 0, 
-          zIndex: -100, 
-          width: '210mm',
-          overflow: 'hidden' 
-      }}>
-         {printImageSrc && (
-           <img 
-              src={printImageSrc} 
-              alt="Printed Invoice" 
-              style={{ width: '100%', height: 'auto' }}
-              // Removed crossOrigin to properly support Blob URLs
-              onLoad={() => {
-                   // Short delay to ensure browser paint
-                   setTimeout(() => window.print(), 100);
-                   
-                   // Long timeout to prevent premature cleanup while print dialog is open
-                   setTimeout(() => {
-                       if (printImageSrc) URL.revokeObjectURL(printImageSrc);
-                       setIsReadyToPrint(false);
-                       setPrintImageSrc(null);
-                   }, 60000); // 1 minute keep-alive
-              }}
-              onError={(e) => {
-                   console.error("Print image error:", e);
-                   alert("فشل عرض صورة الطباعة.");
-                   setIsReadyToPrint(false);
-              }}
-           />
+      {/* PRINTABLE AREA (Standard DOM) */}
+      <div id="printable-area" style={{ display: 'none' }} dir="rtl">
+         {printingItem && (
+            // IMPORTANT: Passing null to signatureImg to avoid printing the electronic signature
+            <InvoiceClone 
+              data={printingItem} 
+              mode={printMode} 
+              signatureImg={null} 
+            />
          )}
       </div>
     </>
