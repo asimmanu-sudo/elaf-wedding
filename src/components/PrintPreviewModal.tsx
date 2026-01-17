@@ -50,12 +50,12 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             await new Promise(resolve => setTimeout(resolve, 100));
         }
 
-        // 2. Generate Image with Robust Settings
+        // 2. Generate Image as Base64
         const dataUrl = await toPng(invoiceRef.current, {
             quality: 1.0,
-            pixelRatio: 2,       // Higher resolution for better print quality
-            cacheBust: true,     // Critical: Force bypass browser cache for external resources
-            skipAutoScale: true, // Prevent weird scaling issues
+            pixelRatio: 2,       
+            cacheBust: true,     
+            skipAutoScale: true, 
             backgroundColor: '#ffffff',
             style: {
                 transform: 'scale(1)',
@@ -64,8 +64,13 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             }
         });
         
-        // 3. Send image to Parent (App.tsx)
-        onPrint(data, mode, dataUrl);
+        // 3. Convert Base64 to Blob URL (Magic Fix for Large Strings)
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+
+        // 4. Send clean Blob URL to Parent
+        onPrint(data, mode, blobUrl);
 
     } catch (err) {
         console.error("فشل توليد صورة الطباعة:", err);

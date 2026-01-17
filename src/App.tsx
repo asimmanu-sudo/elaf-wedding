@@ -145,7 +145,7 @@ function AppContent() {
     if (user) cloudDb.add(COLLS.LOGS, { action, username: user.name, timestamp: new Date().toISOString(), details });
   };
 
-  // Image-Based Print Handler
+  // Image-Based Print Handler (Using Blob URL)
   const handlePrint = (item: any, mode: string, imageSrc?: string | null) => {
     if (imageSrc) {
         setPrintImageSrc(imageSrc);
@@ -196,10 +196,15 @@ function AppContent() {
             visibility: hidden;
           }
           
-          /* Only show printable area and its children */
-          #printable-area, #printable-area * {
+          /* Show printable area */
+          #printable-area {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
             visibility: visible !important;
             display: block !important;
+            z-index: 99999 !important;
+            opacity: 1 !important;
           }
 
           /* Reset body styles for print */
@@ -211,25 +216,13 @@ function AppContent() {
             height: 100% !important;
           }
 
-          /* Position printable area to cover page */
-          #printable-area {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            height: auto !important; /* Ensure image fits */
-            z-index: 99999 !important;
-            opacity: 1 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-
           /* Ensure image displays correctly */
           #printable-area img {
             width: 100% !important;
             height: auto !important;
             display: block !important;
             max-width: 100% !important;
+            visibility: visible !important;
           }
 
           /* Hide app elements specifically */
@@ -297,23 +290,34 @@ function AppContent() {
         </div>
       </div>
 
-      {/* PRINT IMAGE CONTAINER (Always in DOM but hidden via CSS until print) */}
-      <div id="printable-area" style={{ display: 'none' }}>
+      {/* PRINT IMAGE CONTAINER - Off-screen rendering to ensure paint */}
+      <div id="printable-area" style={{ 
+          position: 'fixed', 
+          left: '-10000px', 
+          top: 0, 
+          zIndex: -100, 
+          width: '210mm',
+          overflow: 'hidden' 
+      }}>
          {printImageSrc && (
            <img 
               src={printImageSrc} 
               alt="Printed Invoice" 
-              style={{ width: '100%' }}
+              style={{ width: '100%', height: 'auto' }}
               onLoad={() => {
+                   // Ensure image is painted before printing
                    window.print();
+                   
+                   // Cleanup Blob URL after print dialog closes/opens
                    setTimeout(() => {
+                       if (printImageSrc) URL.revokeObjectURL(printImageSrc);
                        setIsReadyToPrint(false);
                        setPrintImageSrc(null);
-                   }, 1000);
+                   }, 500);
               }}
               onError={(e) => {
                    console.error("Print image error:", e);
-                   alert("فشل تحميل صورة الطباعة. حاول مرة أخرى.");
+                   alert("فشل عرض صورة الطباعة.");
                    setIsReadyToPrint(false);
               }}
            />
