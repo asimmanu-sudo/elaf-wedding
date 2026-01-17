@@ -1,13 +1,11 @@
 
 // src/App.tsx
 import React, { useState, useEffect } from 'react';
-import { createRoot } from 'react-dom/client';
 import { Search, LogOut, CheckCircle, AlertTriangle, RefreshCw, Save } from 'lucide-react';
 import { cloudDb, COLLS } from './services/firebase';
 import { backupService } from './services/backup';
 import { User, UserRole } from './types';
 import { NAV_ITEMS } from './utils/constants';
-import { isIOS } from './utils/helpers';
 import { IconByName, Input, Button } from './components/UI';
 import InvoiceClone from './components/InvoiceClone';
 
@@ -103,7 +101,7 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<any[]>([]);
   
-  // Printing State
+  // --- Printing State (Native Solution) ---
   const [printingItem, setPrintingItem] = useState<any>(null);
   const [printMode, setPrintMode] = useState<any>('DEPOSIT');
 
@@ -146,16 +144,19 @@ function AppContent() {
     if (user) cloudDb.add(COLLS.LOGS, { action, username: user.name, timestamp: new Date().toISOString(), details });
   };
 
-  // Direct DOM Printing Handler
+  // --- NATIVE PRINT HANDLER ---
   const handlePrint = (item: any, mode: string) => {
+    // 1. Set data to render in the hidden print area
     setPrintingItem(item);
     setPrintMode(mode);
     
-    // Allow React to render the invoice in the hidden area first
+    // 2. Wait for React to render the invoice in the DOM
     setTimeout(() => {
+        // 3. Trigger browser print dialog
         window.print();
-        // Clear state after print dialog is likely closed
-        setTimeout(() => setPrintingItem(null), 1000);
+        
+        // 4. Cleanup after a reasonable delay (allowing print dialog interaction)
+        setTimeout(() => setPrintingItem(null), 500);
     }, 500);
   };
 
@@ -194,7 +195,7 @@ function AppContent() {
   return (
     <>
       <style>{`
-        /* Normal state: Hide printable area */
+        /* Normal State: Print Area Hidden */
         #printable-area {
           display: none;
         }
@@ -205,20 +206,21 @@ function AppContent() {
             visibility: hidden;
           }
 
-          /* 2. Specifically hide main app container */
+          /* 2. Hide Main App Container specifically to reset scrolling/layout */
           .app-container {
             display: none !important;
           }
 
-          /* 3. Reset Page */
+          /* 3. Reset Page Basics */
           html, body {
             height: auto !important;
             overflow: visible !important;
             background: white !important;
             margin: 0 !important;
+            padding: 0 !important;
           }
 
-          /* 4. Show and position Printable Area */
+          /* 4. Show and Position Print Area */
           #printable-area {
             display: block !important;
             position: absolute !important;
@@ -229,7 +231,7 @@ function AppContent() {
             z-index: 999999 !important;
           }
 
-          /* 5. Show children of printable area */
+          /* 5. Ensure Content inside Print Area is Visible */
           #printable-area * {
             visibility: visible !important;
           }
@@ -301,7 +303,7 @@ function AppContent() {
             <InvoiceClone 
               data={printingItem} 
               mode={printMode} 
-              signatureImg={null} // Signature removed for cleaner paper print
+              // Removed signatureImg prop to ensure clean print for manual signing
             />
          )}
       </div>
