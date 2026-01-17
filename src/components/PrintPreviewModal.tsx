@@ -84,7 +84,10 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
         // 4. Convert Base64 to Blob URL (Magic Fix for Large Strings)
         const res = await fetch(dataUrl);
         const blob = await res.blob();
-        const blobUrl = URL.createObjectURL(blob);
+        
+        // Explicitly set type to image/png to avoid ambiguity
+        const cleanBlob = new Blob([blob], { type: 'image/png' });
+        const blobUrl = URL.createObjectURL(cleanBlob);
 
         // 5. Send clean Blob URL to Parent
         onPrint(data, mode, blobUrl);

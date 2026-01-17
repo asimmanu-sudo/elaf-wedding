@@ -304,7 +304,7 @@ function AppContent() {
               src={printImageSrc} 
               alt="Printed Invoice" 
               style={{ width: '100%', height: 'auto' }}
-              crossOrigin="anonymous" // IMPORTANT for consistent behavior
+              // Removed crossOrigin to properly support Blob URLs
               onLoad={() => {
                    // Short delay to ensure browser paint
                    setTimeout(() => window.print(), 100);
