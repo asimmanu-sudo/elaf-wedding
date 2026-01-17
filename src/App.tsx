@@ -195,17 +195,17 @@ function AppContent() {
     <>
       <style>{`
         @media print {
-          /* 1. Hide Everything by default */
-          body * {
-            visibility: hidden;
-          }
-          
-          /* 2. Hide Main App Containers specifically */
-          #root, .app-container, .no-print, header, nav, main, .toasts-container {
+          /* 1. إخفاء واجهة التطبيق فقط (وليس الجذر) */
+          .app-container, .toasts-container, .no-print, header, nav, main {
             display: none !important;
           }
 
-          /* 3. Show Printable Area and its children */
+          /* 2. التأكد من أن الجذر ظاهر */
+          #root {
+            display: block !important;
+          }
+
+          /* 3. إظهار منطقة الطباعة وتنسيقها */
           #printable-area {
             display: block !important;
             position: absolute !important;
@@ -213,22 +213,22 @@ function AppContent() {
             top: 0 !important;
             width: 100% !important;
             height: auto !important;
-            visibility: visible !important;
             z-index: 99999 !important;
             background: white !important;
+            opacity: 1 !important;
           }
 
+          /* ضمان ظهور المحتويات */
           #printable-area * {
             visibility: visible !important;
           }
 
-          /* 4. Reset Body/HTML for print */
+          /* ريست لخصائص الصفحة */
           body, html {
-            margin: 0 !important;
-            padding: 0 !important;
             background-color: white !important;
-            overflow: visible !important;
             height: auto !important;
+            overflow: visible !important;
+            margin: 0 !important;
           }
         }
       `}</style>
