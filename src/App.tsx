@@ -23,10 +23,9 @@ import LifeBudgetView from './views/LifeBudgetView';
 import LogsView from './views/LogsView';
 import SettingsView from './views/SettingsView';
 
-// --- THEME CONFIGURATION (RGB CHANNELS ONLY) ---
+// --- THEME CONFIGURATION ---
 const THEMES: any = {
   default: {
-    // Brand: Purple/Fuchsia (Default)
     '--color-brand-50': '253 244 255',
     '--color-brand-100': '250 232 255',
     '--color-brand-200': '245 208 254',
@@ -38,7 +37,6 @@ const THEMES: any = {
     '--color-brand-800': '134 25 143',
     '--color-brand-900': '112 26 117',
     '--color-brand-950': '74 4 78',
-    // Base: Slate (Blue-ish Gray)
     '--color-base-50': '248 250 252',
     '--color-base-100': '241 245 249',
     '--color-base-200': '226 232 240',
@@ -52,19 +50,17 @@ const THEMES: any = {
     '--color-base-950': '2 6 23',
   },
   warm_gold: {
-    // Brand: Rich Gold / Amber
     '--color-brand-50': '251 248 242',
     '--color-brand-100': '245 239 224',
     '--color-brand-200': '234 219 179',
     '--color-brand-300': '222 195 133',
-    '--color-brand-400': '212 175 55', // Metallic Gold
+    '--color-brand-400': '212 175 55',
     '--color-brand-500': '184 150 40',
     '--color-brand-600': '150 120 28',
     '--color-brand-700': '117 92 18',
     '--color-brand-800': '87 67 13',
     '--color-brand-900': '61 47 8',
     '--color-brand-950': '38 28 3',
-    // Base: Stone (Warm Brownish Grey) - Maps to "slate" classes
     '--color-base-50': '250 250 249',
     '--color-base-100': '245 245 244',
     '--color-base-200': '231 229 228',
@@ -79,41 +75,20 @@ const THEMES: any = {
   }
 };
 
-// --- ERROR BOUNDARY COMPONENT ---
 class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) {
     super(props);
     this.state = { hasError: false, error: null, errorInfo: null };
   }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error("Uncaught error:", error, errorInfo);
-    this.setState({ errorInfo });
-  }
-
+  static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
+  componentDidCatch(error: any, errorInfo: any) { this.setState({ errorInfo }); }
   render() {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8 text-center dir-ltr">
           <AlertTriangle size={64} className="text-red-500 mb-6" />
           <h1 className="text-3xl font-black mb-4">Something went wrong</h1>
-          <div className="bg-slate-900 p-6 rounded-2xl border border-red-500/20 max-w-2xl overflow-auto text-left mb-6">
-            <p className="text-red-400 font-mono text-sm mb-2">{this.state.error?.toString()}</p>
-            <details className="text-slate-500 text-xs font-mono">
-              <summary>Stack Trace</summary>
-              <pre className="mt-2 whitespace-pre-wrap">{this.state.errorInfo?.componentStack}</pre>
-            </details>
-          </div>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="bg-brand-600 hover:bg-brand-500 text-white px-8 py-4 rounded-xl font-bold flex items-center gap-2"
-          >
-            <RefreshCw size={20} /> Reload Application
-          </button>
+          <button onClick={() => window.location.reload()} className="bg-brand-600 text-white px-8 py-4 rounded-xl font-bold flex items-center gap-2"><RefreshCw size={20} /> Reload</button>
         </div>
       );
     }
@@ -127,18 +102,13 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<any[]>([]);
   
-  // Printing State - Now using Image Source
+  // Printing State - Image Based
   const [printImageSrc, setPrintImageSrc] = useState<string | null>(null);
   const [isReadyToPrint, setIsReadyToPrint] = useState(false);
-  const [printJobId, setPrintJobId] = useState(0);
 
-  // Theme State
+  // Theme & Data
   const [theme, setTheme] = useState(localStorage.getItem('app_theme') || 'default');
-  
-  // Backup State
   const [isBackupNeeded, setIsBackupNeeded] = useState(false);
-
-  // Database States
   const [dresses, setDresses] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [sales, setSales] = useState([]);
@@ -147,39 +117,36 @@ function AppContent() {
   const [logs, setLogs] = useState([]);
 
   useEffect(() => {
-    // Listen for theme changes from SettingsView
-    const handleThemeChange = () => {
-      setTheme(localStorage.getItem('app_theme') || 'default');
-    };
+    const handleThemeChange = () => setTheme(localStorage.getItem('app_theme') || 'default');
     window.addEventListener('theme-change', handleThemeChange);
-
-    // Check Backup Status
     setIsBackupNeeded(backupService.isBackupNeeded());
 
-    const unsubD = cloudDb.subscribe(COLLS.DRESSES, setDresses);
-    const unsubB = cloudDb.subscribe(COLLS.BOOKINGS, setBookings);
-    const unsubS = cloudDb.subscribe(COLLS.SALES, setSales);
-    const unsubF = cloudDb.subscribe(COLLS.FINANCE, setFinance);
-    const unsubU = cloudDb.subscribe(COLLS.USERS, setUsers);
-    const unsubL = cloudDb.subscribe(COLLS.LOGS, setLogs);
+    const unsubs = [
+      cloudDb.subscribe(COLLS.DRESSES, setDresses),
+      cloudDb.subscribe(COLLS.BOOKINGS, setBookings),
+      cloudDb.subscribe(COLLS.SALES, setSales),
+      cloudDb.subscribe(COLLS.FINANCE, setFinance),
+      cloudDb.subscribe(COLLS.USERS, setUsers),
+      cloudDb.subscribe(COLLS.LOGS, setLogs)
+    ];
     return () => { 
       window.removeEventListener('theme-change', handleThemeChange);
-      unsubD(); unsubB(); unsubS(); unsubF(); unsubU(); unsubL(); 
+      unsubs.forEach(u => u());
     };
   }, []);
 
-  // Async Print Logic
+  // Handle Print Trigger
   useEffect(() => {
-    if (isReadyToPrint) {
-        // Wait 800ms for images to render
-        // Even with display:none, React needs a tick to update the VDOM before print grabs it
+    if (isReadyToPrint && printImageSrc) {
+        // Short timeout to ensure image rendering
         const timer = setTimeout(() => {
             window.print();
-            setIsReadyToPrint(false); // Reset after print dialog triggers
-        }, 800);
+            setIsReadyToPrint(false);
+            setPrintImageSrc(null); // Optional: Clear after print
+        }, 500);
         return () => clearTimeout(timer);
     }
-  }, [isReadyToPrint, printJobId]);
+  }, [isReadyToPrint, printImageSrc]);
 
   const showToast = (msg: string, type: 'success' | 'error' | 'warning' = 'success') => {
     const id = Date.now();
@@ -192,38 +159,23 @@ function AppContent() {
   };
 
   // Image-Based Print Handler
-  const handlePrint = (imageSrc: string) => {
-    setPrintImageSrc(imageSrc);
-    setPrintJobId(prev => prev + 1); // Force effect trigger
-    setIsReadyToPrint(true);
-  };
-
-  const handleBackupExport = () => {
-    const fullData = { dresses, bookings, sales, finance, users, logs };
-    const success = backupService.exportData(fullData);
-    if(success) {
-        setIsBackupNeeded(false);
-        showToast('تم حفظ نسخة احتياطية بنجاح');
+  const handlePrint = (item: any, mode: string, imageSrc?: string | null) => {
+    if (imageSrc) {
+        setPrintImageSrc(imageSrc);
+        setIsReadyToPrint(true);
     } else {
-        showToast('فشل حفظ النسخة', 'error');
+        showToast("فشل تحميل صورة الطباعة", "error");
     }
   };
 
   const hasPerm = (p: string) => user?.role === UserRole.ADMIN || user?.permissions.includes(p);
-
-  // Apply Theme Variables
   const themeStyles = THEMES[theme] || THEMES['default'];
 
+  // Auth Screen
   if (!user) {
     return (
-      // LOGIN SCREEN: Using generic slate classes that map to variables
-      <div 
-        className="min-h-screen flex flex-col items-center justify-center p-8 animate-fade-in no-print bg-slate-950 bg-[url('/store-bg.jpg')] bg-cover bg-center relative"
-        style={themeStyles as React.CSSProperties}
-      >
-        {/* Overlay: Uses bg-slate-950 which becomes Warm Brown in Gold Theme */}
-        <div className="absolute inset-0 backdrop-blur-[2px] bg-slate-950/85"></div> 
-        
+      <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-slate-950 bg-[url('/store-bg.jpg')] bg-cover bg-center relative" style={themeStyles as React.CSSProperties}>
+        <div className="absolute inset-0 backdrop-blur-[2px] bg-slate-950/85"></div>
         <div className="relative z-10 flex flex-col items-center w-full max-w-sm">
           <img src="/Logo.png" alt="Logo" className="w-44 mb-10 object-contain drop-shadow-2xl" />
           <div className="w-full backdrop-blur-xl border border-white/10 p-10 rounded-[3.5rem] shadow-2xl bg-slate-900/60">
@@ -231,116 +183,83 @@ function AppContent() {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
               const foundUser = users.find((x: any) => x.username === fd.get('u') && x.password === fd.get('p'));
-              
-              // MANUAL BACKDOOR for Initial Setup or DB Failure
               if (!foundUser && fd.get('u') === 'admin' && fd.get('p') === '123') {
                   setUser({ id: 'master', name: 'مدير النظام', role: UserRole.ADMIN, permissions: ['ALL'], username: 'admin' });
-                  setActiveTab('home');
                   return;
               }
-
-              if (foundUser) { 
-                setUser(foundUser); 
-                setActiveTab('home'); // Ensure we start at home
-              } else { 
-                showToast('بيانات الدخول غير صحيحة', 'error'); 
-              }
+              if (foundUser) setUser(foundUser);
+              else showToast('بيانات الدخول غير صحيحة', 'error');
             }} className="space-y-6">
               <Input name="u" placeholder="اسم المستخدم" required className="!bg-slate-950/50 !border-white/10 placeholder:text-white/50" />
               <Input name="p" type="password" placeholder="كلمة المرور" required className="!bg-slate-950/50 !border-white/10 placeholder:text-white/50" />
-              {/* Button: bg-brand-600 becomes Gold or Purple automatically */}
               <Button className="w-full h-16 text-lg mt-6 text-white border-none bg-brand-600 hover:bg-brand-500 shadow-brand-500/20">دخول النظام</Button>
             </form>
           </div>
-        </div>
-        
-        <div className="fixed bottom-8 left-4 right-4 z-[2000] space-y-2 pointer-events-none flex flex-col items-center">
-          {toasts.map((t: any) => (
-            <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-3xl shadow-2xl border pointer-events-auto animate-slide-up w-full max-w-sm ${
-              t.type === 'error' ? 'bg-red-950/90 border-red-500/50 text-red-100' : t.type === 'warning' ? 'bg-orange-950/90 border-orange-500/50 text-orange-100' : 'bg-emerald-950/90 border-emerald-500/50 text-emerald-100'
-            }`}>
-              {t.type === 'error' ? <AlertTriangle size={20}/> : <CheckCircle size={20}/>}
-              <span className="font-bold text-sm">{t.msg}</span>
-            </div>
-          ))}
         </div>
       </div>
     );
   }
 
-  // Filter NAV_ITEMS based on permissions
-  const visibleNavItems = NAV_ITEMS.filter(item => {
-    if (item.id === 'life_budget') return hasPerm('view_personal_budget') || hasPerm('admin_reset');
-    if (item.id === 'settings') return true; 
-    if (item.id === 'home') return true;
-    return hasPerm(`view_${item.id}`);
-  });
-
   return (
     <>
       <style>{`
-        /* STANDARD PRINT PATTERN */
         @media print {
-          /* 1. Hide the entire Main App Container & UI Elements */
-          .no-print, .no-print *, nav, header, main, .toasts-container {
-            display: none !important;
+          /* Hide everything in body */
+          body * {
+            visibility: hidden;
           }
           
-          /* Also hide root's direct children except the print area (if applicable) */
-          #root > *:not(#printable-area) {
-             display: none !important;
+          /* Only show printable area and its children */
+          #printable-area, #printable-area * {
+            visibility: visible !important;
           }
 
-          /* Reset body/html for clean print canvas */
+          /* Reset body styles for print */
           body, html {
-            height: auto !important;
-            overflow: visible !important;
+            margin: 0 !important;
+            padding: 0 !important;
             background-color: white !important;
+            overflow: visible !important;
+            height: 100% !important;
+          }
+
+          /* Position printable area to cover page */
+          #printable-area {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            height: auto !important; /* Ensure image fits */
+            z-index: 99999 !important;
+            opacity: 1 !important;
             margin: 0 !important;
             padding: 0 !important;
           }
 
-          /* 2. Show ONLY the Printable Area */
-          #printable-area {
-            display: block !important;
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
+          /* Ensure image displays correctly */
+          #printable-area img {
             width: 100% !important;
             height: auto !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            background-color: white !important;
-            z-index: 99999 !important;
-            overflow: visible !important;
-            opacity: 1 !important;
-            visibility: visible !important;
+            display: block !important;
+            max-width: 100% !important;
           }
 
-          /* Force Visibility for Children */
-          #printable-area * {
-            visibility: visible !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
+          /* Hide app elements specifically */
+          .no-print, header, nav, main, .toasts-container {
+            display: none !important;
           }
         }
       `}</style>
       
-      {/* Root Application Wrapper with Dynamic Variables */}
-      {/* Added "no-print" class to hide this entire tree during printing */}
-      <div 
-        className="h-full flex flex-col text-slate-100 overflow-hidden no-print bg-slate-950" 
-        dir="rtl"
-        style={themeStyles as React.CSSProperties}
-      >
-        {/* SMART BACKUP REMINDER BANNER - Admin Only */}
-        {user && user.role === UserRole.ADMIN && isBackupNeeded && (
+      <div className="h-full flex flex-col text-slate-100 overflow-hidden no-print bg-slate-950" dir="rtl" style={themeStyles as React.CSSProperties}>
+        {/* Backup Banner */}
+        {user.role === UserRole.ADMIN && isBackupNeeded && (
             <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between shadow-md relative z-[150]">
                 <div className="flex items-center gap-2">
                     <AlertTriangle size={20} className="animate-pulse" />
                     <span className="text-xs font-bold">تنبيه: لم تقم بحفظ نسخة احتياطية لبيانات اليوم!</span>
                 </div>
-                <button onClick={handleBackupExport} className="bg-white text-red-600 px-3 py-1 rounded-lg text-xs font-black hover:bg-red-50 transition-colors flex items-center gap-1">
+                <button onClick={() => { backupService.exportData({ dresses, bookings, sales, finance, users, logs }); setIsBackupNeeded(false); showToast('تم الحفظ'); }} className="bg-white text-red-600 px-3 py-1 rounded-lg text-xs font-black hover:bg-red-50 transition-colors flex items-center gap-1">
                     <Save size={14}/> حفظ الآن
                 </button>
             </div>
@@ -350,15 +269,9 @@ function AppContent() {
           <div className="px-6 h-20 flex items-center gap-4">
             <div className="flex-1 relative group">
               <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500" size={20}/>
-              <input 
-                value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                placeholder={`بحث في ${NAV_ITEMS.find(i => i.id === activeTab)?.label}...`}
-                className="w-full bg-slate-950/50 border-none ring-1 ring-white/5 rounded-full h-12 pr-12 pl-4 text-sm font-bold focus:ring-brand-500 outline-none transition-all"
-              />
+              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder={`بحث في ${NAV_ITEMS.find(i => i.id === activeTab)?.label}...`} className="w-full bg-slate-950/50 border-none ring-1 ring-white/5 rounded-full h-12 pr-12 pl-4 text-sm font-bold focus:ring-brand-500 outline-none transition-all" />
             </div>
-            <button onClick={() => setUser(null)} className="w-12 h-12 flex items-center justify-center bg-red-500/10 text-red-500 rounded-full">
-              <LogOut size={22}/>
-            </button>
+            <button onClick={() => setUser(null)} className="w-12 h-12 flex items-center justify-center bg-red-500/10 text-red-500 rounded-full"><LogOut size={22}/></button>
           </div>
         </header>
 
@@ -378,14 +291,9 @@ function AppContent() {
 
         <nav className="shrink-0 pb-safe bg-slate-900/80 backdrop-blur-3xl border-t border-white/5 fixed bottom-0 left-0 right-0 z-[200]">
           <div className="h-20 flex items-center overflow-x-auto custom-scrollbar px-2 space-x-2 space-x-reverse">
-            {visibleNavItems.map((item: any) => (
-              <button 
-                key={item.id} onClick={() => { setActiveTab(item.id); setSearchQuery(''); }}
-                className={`flex flex-col items-center justify-center min-w-[85px] transition-all ${activeTab === item.id ? 'text-brand-500 scale-105' : 'text-slate-500'}`}
-              >
-                <div className={`w-12 h-9 flex items-center justify-center rounded-full transition-all ${activeTab === item.id ? 'bg-brand-500/10' : ''}`}>
-                  <IconByName name={item.icon} size={20} strokeWidth={activeTab === item.id ? 2.5 : 2} />
-                </div>
+            {NAV_ITEMS.filter(item => item.id === 'home' || item.id === 'settings' || item.id === 'life_budget' ? true : hasPerm(`view_${item.id}`)).map((item: any) => (
+              <button key={item.id} onClick={() => { setActiveTab(item.id); setSearchQuery(''); }} className={`flex flex-col items-center justify-center min-w-[85px] transition-all ${activeTab === item.id ? 'text-brand-500 scale-105' : 'text-slate-500'}`}>
+                <div className={`w-12 h-9 flex items-center justify-center rounded-full transition-all ${activeTab === item.id ? 'bg-brand-500/10' : ''}`}><IconByName name={item.icon} size={20} strokeWidth={activeTab === item.id ? 2.5 : 2} /></div>
                 <span className="text-[9px] mt-1 whitespace-nowrap opacity-80">{item.label}</span>
               </button>
             ))}
@@ -394,22 +302,19 @@ function AppContent() {
 
         <div className="fixed bottom-24 left-4 right-4 z-[2000] space-y-2 pointer-events-none toasts-container">
           {toasts.map((t: any) => (
-            <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-3xl shadow-2xl border pointer-events-auto animate-slide-up mx-auto max-sm ${
-              t.type === 'error' ? 'bg-red-950/90 border-red-500/50 text-red-100' : t.type === 'warning' ? 'bg-orange-950/90 border-orange-500/50 text-orange-100' : 'bg-emerald-950/90 border-emerald-500/50 text-emerald-100'
-            }`}>
-              {t.type === 'error' ? <AlertTriangle size={20}/> : <CheckCircle size={20}/>}
-              <span className="font-bold text-sm">{t.msg}</span>
+            <div key={t.id} className={`flex items-center gap-3 px-6 py-4 rounded-3xl shadow-2xl border pointer-events-auto animate-slide-up mx-auto max-sm ${t.type === 'error' ? 'bg-red-950/90 border-red-500/50 text-red-100' : 'bg-emerald-950/90 border-emerald-500/50 text-emerald-100'}`}>
+              {t.type === 'error' ? <AlertTriangle size={20}/> : <CheckCircle size={20}/>} <span className="font-bold text-sm">{t.msg}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* PRINT AREA */}
-      <div id="printable-area" style={{ display: 'none' }}>
+      {/* PRINT IMAGE CONTAINER (Always in DOM but hidden via CSS until print) */}
+      <div id="printable-area" style={{ position: 'fixed', top: 0, left: 0, opacity: 0, zIndex: -100, pointerEvents: 'none' }}>
          {printImageSrc && (
            <img 
               src={printImageSrc} 
-              alt="Print Invoice" 
+              alt="Printed Invoice" 
               style={{ width: '100%', height: 'auto', display: 'block' }} 
            />
          )}

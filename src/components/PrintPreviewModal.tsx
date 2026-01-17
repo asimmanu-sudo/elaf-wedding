@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
-import { X, Printer, Pen, Eraser, Check, MessageCircle, Share2, AlertTriangle } from 'lucide-react';
+import { X, Printer, Pen, Eraser, Check, Share2, AlertTriangle } from 'lucide-react';
 import InvoiceClone from './InvoiceClone';
 import { toPng } from 'html-to-image';
 
@@ -9,8 +9,8 @@ interface PrintPreviewModalProps {
   data: any;
   mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE';
   onClose: () => void;
-  // Updated onPrint signature to accept the generated image URL string
-  onPrint: (imageSrc: string) => void;
+  // Updated signature: receives data, mode, and the generated image source
+  onPrint: (data: any, mode: any, imageSrc?: string | null) => void;
 }
 
 export default function PrintPreviewModal({ data, mode, onClose, onPrint }: PrintPreviewModalProps) {
@@ -28,7 +28,6 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
     setSignatureImg(null);
   };
 
-  // Captures signature to State (for visual preview)
   const saveSignatureToState = () => {
     if (sigPad.current && !sigPad.current.isEmpty()) {
       const dataUrl = sigPad.current.getTrimmedCanvas().toDataURL('image/png');
@@ -39,33 +38,31 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
   };
 
   // --- Image Generation Helper ---
-  
+
   const generateInvoiceImage = async () => {
     if (!invoiceRef.current) return null;
 
-    // 1. Ensure signature is visually applied before capture
+    // 1. Capture signature if present but not yet saved to state
     if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
         saveSignatureToState();
         // Tiny delay to let React render the signature image in the DOM
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // 2. High Quality Capture Settings for A4 using html-to-image
-    // A4 Width at 96 DPI is approx 794px. 
-    // pixelRatio: 3 ensures high density (~300 DPI equivalent) for crisp text/images.
+    // 2. High Quality Capture Settings for A4
+    // pixelRatio: 3 ensures very high density (~300 DPI) for crisp text
     const width = 794; 
     const height = 1123; 
 
     try {
         const dataUrl = await toPng(invoiceRef.current, {
             cacheBust: true, 
-            pixelRatio: 3,   // High resolution for print/mobile
+            pixelRatio: 3,
             quality: 1.0,
             backgroundColor: '#ffffff', 
             width: width,
             height: height,
             style: {
-                // Ensure specific styles for capture are reset
                 transform: 'scale(1)',
                 transformOrigin: 'top left',
                 fontFamily: "'Tajawal', sans-serif",
@@ -82,12 +79,12 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
 
   const handleFinalPrint = async () => {
     setIsProcessing(true);
-    // Generate the image of the current view
+    // Generate the image of the invoice
     const imgSrc = await generateInvoiceImage();
     
     if (imgSrc) {
-        // Send the image to the App to print
-        onPrint(imgSrc);
+        // Pass the generated image to the parent onPrint handler
+        onPrint(data, mode, imgSrc);
     } else {
         alert("حدث خطأ أثناء معالجة الصورة للطباعة");
     }
@@ -102,14 +99,11 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
         const dataUrl = await generateInvoiceImage();
         if (!dataUrl) throw new Error('Failed to generate image');
 
-        // Convert DataURL to Blob & File for sharing
         const res = await fetch(dataUrl);
         const blob = await res.blob();
-
         const fileName = `invoice_${data.customerName || 'client'}_${Date.now()}.png`;
         const file = new File([blob], fileName, { type: 'image/png' });
         
-        // Share or Download
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({
                 files: [file],
@@ -117,7 +111,6 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
                 text: `فاتورة ${data.customerName || data.brideName}`,
             });
         } else {
-            // Desktop Fallback
             const link = document.createElement('a');
             link.href = dataUrl;
             link.download = fileName;
@@ -125,7 +118,6 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             link.click();
             document.body.removeChild(link);
             
-            // Helper link for web.whatsapp.com
             const phone = data.customerPhone || data.bridePhone;
             if (phone) {
                 const cleanPhone = phone.replace(/\s+/g, '').replace(/-/g, '').replace('+', '');
@@ -139,7 +131,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
 
     } catch (error) {
         console.error('Share Error:', error);
-        alert('حدث خطأ أثناء محاولة مشاركة الفاتورة. يرجى المحاولة مرة أخرى.');
+        alert('حدث خطأ أثناء محاولة مشاركة الفاتورة.');
     } finally {
         setIsProcessing(false);
     }
@@ -148,14 +140,9 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
   return (
     <div className="fixed inset-0 z-[2000] bg-slate-950/95 backdrop-blur-sm flex flex-col md:flex-row h-full w-full overflow-hidden">
       
-      {/* 
-        ========================================
-        1. PREVIEW AREA (Left/Top) - SCROLLABLE
-        ========================================
-      */}
+      {/* PREVIEW AREA */}
       <div className="flex-1 bg-slate-800 relative overflow-auto custom-scrollbar flex justify-center items-start p-4 md:p-8">
         
-        {/* Floating Close Button for Mobile Accessibility */}
         <button 
             onClick={onClose} 
             className="fixed top-4 left-4 z-50 w-10 h-10 bg-slate-900/80 text-white rounded-full flex items-center justify-center border border-white/10 shadow-lg hover:bg-red-500 transition-colors md:hidden"
@@ -163,11 +150,6 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             <X size={20} />
         </button>
 
-        {/* 
-           INVOICE CONTAINER 
-           - Explicit A4 dimensions.
-           - Pointer events disabled to prevent text selection while scrolling.
-        */}
         <div 
             ref={invoiceRef}
             className="bg-white shadow-2xl relative origin-top"
@@ -183,14 +165,9 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
         </div>
       </div>
 
-      {/* 
-        ========================================
-        2. TOOLS SIDEBAR (Right/Bottom) - FIXED
-        ========================================
-      */}
+      {/* TOOLS SIDEBAR */}
       <div className="w-full md:w-96 bg-slate-950 border-t md:border-t-0 md:border-r border-white/10 flex flex-col shrink-0 h-[45vh] md:h-full z-40 shadow-2xl">
          
-         {/* Header */}
          <div className="flex justify-between items-center p-5 border-b border-white/5 bg-slate-900/50">
             <div>
                 <h3 className="text-lg font-black text-white">معاينة وتوقيع</h3>
@@ -201,10 +178,8 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             </button>
          </div>
 
-         {/* Tools Content - Scrollable if needed */}
          <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6">
             
-            {/* Signature Block */}
             <div className="space-y-3">
                 <div className="flex justify-between items-end">
                     <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -241,7 +216,6 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
 
             <div className="h-px bg-white/5"></div>
 
-            {/* Actions Block */}
             <div className="space-y-3">
                <button 
                    onClick={handleFinalPrint} 
