@@ -201,26 +201,21 @@ function AppContent() {
         }
 
         @media print {
-          /* 1. Hide everything by default */
-          body * {
-            visibility: hidden;
-          }
-
-          /* 2. Hide Main App Container specifically to reset scrolling/layout */
-          .app-container {
+          /* 1. Hide everything in the web app */
+          .app-container, .toasts-container, header, nav, .no-print {
             display: none !important;
           }
 
-          /* 3. Reset Page Basics */
+          /* 2. Setup page for printing */
           html, body {
             height: auto !important;
             overflow: visible !important;
-            background: white !important;
+            background-color: white !important;
             margin: 0 !important;
             padding: 0 !important;
           }
 
-          /* 4. Show and Position Print Area */
+          /* 3. Show and position print area */
           #printable-area {
             display: block !important;
             position: absolute !important;
@@ -228,18 +223,13 @@ function AppContent() {
             left: 0 !important;
             width: 100% !important;
             height: auto !important;
-            z-index: 999999 !important;
-          }
-
-          /* 5. Ensure Content inside Print Area is Visible */
-          #printable-area * {
-            visibility: visible !important;
+            z-index: 9999 !important;
           }
         }
       `}</style>
       
       {/* MAIN APP CONTAINER */}
-      <div className="h-full flex flex-col text-slate-100 overflow-hidden no-print bg-slate-950 app-container" dir="rtl" style={themeStyles as React.CSSProperties}>
+      <div className="h-full flex flex-col text-slate-100 overflow-hidden no-print app-container" dir="rtl" style={themeStyles as React.CSSProperties}>
         {/* Backup Banner */}
         {user.role === UserRole.ADMIN && isBackupNeeded && (
             <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between shadow-md relative z-[150]">
@@ -303,7 +293,7 @@ function AppContent() {
             <InvoiceClone 
               data={printingItem} 
               mode={printMode} 
-              // Removed signatureImg prop to ensure clean print for manual signing
+              signatureImg={null} // Ensure clean print for manual signing
             />
          )}
       </div>

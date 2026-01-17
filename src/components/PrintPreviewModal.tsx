@@ -40,8 +40,6 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
 
   const handleFinalPrint = () => {
     // Simply delegate to parent for native printing
-    // Note: We deliberately do NOT pass the signature image for printing,
-    // to allow for clean manual signing on the paper.
     onPrint(data, mode);
     onClose();
   };
