@@ -36,6 +36,20 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
     return null;
   };
 
+  // --- Image Helpers ---
+
+  // Helper to ensure all images in the invoice DOM are fully loaded before capturing
+  const preloadImages = async (element: HTMLElement) => {
+    const images = Array.from(element.getElementsByTagName('img'));
+    await Promise.all(images.map(img => {
+      if (img.complete) return Promise.resolve();
+      return new Promise((resolve) => { 
+        img.onload = resolve; 
+        img.onerror = resolve; 
+      });
+    }));
+  };
+
   // --- Print Handlers ---
 
   const handleFinalPrint = async () => {
@@ -50,7 +64,10 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             await new Promise(resolve => setTimeout(resolve, 100));
         }
 
-        // 2. Generate Image as Base64
+        // 2. Preload Images (Wait for Logos/QRs to be ready)
+        await preloadImages(invoiceRef.current);
+
+        // 3. Generate Image as Base64
         const dataUrl = await toPng(invoiceRef.current, {
             quality: 1.0,
             pixelRatio: 2,       
@@ -64,12 +81,12 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             }
         });
         
-        // 3. Convert Base64 to Blob URL (Magic Fix for Large Strings)
+        // 4. Convert Base64 to Blob URL (Magic Fix for Large Strings)
         const res = await fetch(dataUrl);
         const blob = await res.blob();
         const blobUrl = URL.createObjectURL(blob);
 
-        // 4. Send clean Blob URL to Parent
+        // 5. Send clean Blob URL to Parent
         onPrint(data, mode, blobUrl);
 
     } catch (err) {
@@ -90,6 +107,8 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             saveSignatureToState();
             await new Promise(resolve => setTimeout(resolve, 100));
         }
+        
+        await preloadImages(invoiceRef.current);
 
         const dataUrl = await toPng(invoiceRef.current, {
             quality: 1.0,

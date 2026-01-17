@@ -75,7 +75,8 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
   const Header = ({ title, subtitle }: { title?: string, subtitle?: string }) => (
     <div className="flex justify-between items-start mb-8 shrink-0 border-b-2 border-[#B59410]/20 pb-4">
       <div className="flex flex-col justify-center">
-        <img src="/Logo.png" alt="Logo" className="w-32 object-contain mb-2" />
+        {/* IMPORTANT: crossOrigin="anonymous" is critical for html-to-image CORS */}
+        <img src="/Logo.png" alt="Logo" className="w-32 object-contain mb-2" crossOrigin="anonymous" />
         <p className="text-[9px] font-black text-[#B59410] tracking-[0.25em] uppercase">ELAF WEDDING DRESSES</p>
       </div>
       <div className="text-left mt-2">
@@ -103,7 +104,7 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
         <div className="text-center pb-2">
            <div className="h-20 flex items-end justify-center mb-2">
               {signatureImg ? (
-                  <img src={signatureImg} alt="Signature" className="h-16 object-contain mix-blend-multiply opacity-90" />
+                  <img src={signatureImg} alt="Signature" className="h-16 object-contain mix-blend-multiply opacity-90" crossOrigin="anonymous" />
               ) : (
                   <div className="w-64 border-b-2 border-dashed border-slate-300"></div>
               )}
@@ -112,7 +113,7 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
         </div>
         
         <div className="text-left">
-           <img src="/qrcode.png" alt="QR" className="w-24 h-24 border-2 border-slate-100 rounded-xl p-1 opacity-90 mix-blend-multiply" />
+           <img src="/qrcode.png" alt="QR" className="w-24 h-24 border-2 border-slate-100 rounded-xl p-1 opacity-90 mix-blend-multiply" crossOrigin="anonymous" />
         </div>
       </div>
     </div>

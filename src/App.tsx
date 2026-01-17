@@ -68,10 +68,10 @@ const THEMES: any = {
     '--color-base-400': '168 162 158',
     '--color-base-500': '120 113 108',
     '--color-base-600': '87 83 78',
-    '--color-base-700': '68 64 60',
-    '--color-base-800': '41 37 36',
-    '--color-base-900': '28 25 23',
-    '--color-base-950': '12 10 9',
+    '--color-base-700': '51 65 85',
+    '--color-base-800': '30 41 59',
+    '--color-base-900': '15 23 42',
+    '--color-base-950': '2 6 23',
   }
 };
 
@@ -304,16 +304,17 @@ function AppContent() {
               src={printImageSrc} 
               alt="Printed Invoice" 
               style={{ width: '100%', height: 'auto' }}
+              crossOrigin="anonymous" // IMPORTANT for consistent behavior
               onLoad={() => {
-                   // Ensure image is painted before printing
-                   window.print();
+                   // Short delay to ensure browser paint
+                   setTimeout(() => window.print(), 100);
                    
-                   // Cleanup Blob URL after print dialog closes/opens
+                   // Long timeout to prevent premature cleanup while print dialog is open
                    setTimeout(() => {
                        if (printImageSrc) URL.revokeObjectURL(printImageSrc);
                        setIsReadyToPrint(false);
                        setPrintImageSrc(null);
-                   }, 500);
+                   }, 60000); // 1 minute keep-alive
               }}
               onError={(e) => {
                    console.error("Print image error:", e);
