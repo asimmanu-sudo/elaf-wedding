@@ -36,24 +36,10 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
     return null;
   };
 
-  // --- Image Helpers ---
-
-  // Helper to ensure all images in the invoice DOM are fully loaded before capturing
-  const preloadImages = async (element: HTMLElement) => {
-    const images = Array.from(element.getElementsByTagName('img'));
-    await Promise.all(images.map(img => {
-      if (img.complete) return Promise.resolve();
-      return new Promise((resolve) => { 
-        img.onload = resolve; 
-        img.onerror = resolve; 
-      });
-    }));
-  };
-
   // --- Print Handlers ---
 
   const handleFinalPrint = () => {
-    // Simply trigger the parent's print handler which uses native window.print()
+    // Directly trigger the parent's print handler which uses native window.print()
     onPrint(data, mode);
   };
 
@@ -62,13 +48,14 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
     setIsProcessing(true);
 
     try {
-        // Ensure signature captured
+        // Ensure signature captured if available
         if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
             saveSignatureToState();
             await new Promise(resolve => setTimeout(resolve, 100));
         }
         
-        await preloadImages(invoiceRef.current);
+        // Simple delay to ensure DOM is ready
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         const dataUrl = await toPng(invoiceRef.current, {
             quality: 1.0,
@@ -89,6 +76,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
                 text: `فاتورة ${data.customerName || data.brideName}`,
             });
         } else {
+            // Fallback: Download and offer WhatsApp Web
             const link = document.createElement('a');
             link.href = dataUrl;
             link.download = fileName;
@@ -128,7 +116,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
             <X size={20} />
         </button>
 
-        {/* DOM Container to Capture */}
+        {/* DOM Container to Capture/Preview */}
         <div 
             ref={invoiceRef}
             className="bg-white shadow-2xl relative origin-top"

@@ -103,7 +103,7 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<any[]>([]);
   
-  // Printing State - Standard DOM
+  // Printing State
   const [printingItem, setPrintingItem] = useState<any>(null);
   const [printMode, setPrintMode] = useState<any>('DEPOSIT');
 
@@ -146,15 +146,15 @@ function AppContent() {
     if (user) cloudDb.add(COLLS.LOGS, { action, username: user.name, timestamp: new Date().toISOString(), details });
   };
 
-  // Standard DOM Print Handler
+  // Direct DOM Printing Handler
   const handlePrint = (item: any, mode: string) => {
     setPrintingItem(item);
     setPrintMode(mode);
     
-    // Give React a moment to render the hidden invoice before invoking print
+    // Allow React to render the invoice in the hidden area first
     setTimeout(() => {
         window.print();
-        // Clear after print dialog closes (or short delay)
+        // Clear state after print dialog is likely closed
         setTimeout(() => setPrintingItem(null), 1000);
     }, 500);
   };
@@ -194,58 +194,49 @@ function AppContent() {
   return (
     <>
       <style>{`
-        /* 1. إعدادات منطقة الطباعة في الوضع العادي (مخفية خارج الشاشة) */
+        /* Normal state: Hide printable area */
         #printable-area {
-          position: fixed;
-          left: -10000px;  /* إخراجها خارج الشاشة */
-          top: 0;
-          width: 210mm;
-          height: auto;
-          overflow: hidden;
-          z-index: -1000;
-          opacity: 0;      /* إخفاء بصري إضافي */
+          display: none;
         }
 
-        /* 2. إعدادات الطباعة */
         @media print {
-          /* إخفاء واجهة التطبيق */
-          .app-container, .toasts-container, .no-print, header, nav, main {
+          /* 1. Hide everything by default */
+          body * {
+            visibility: hidden;
+          }
+
+          /* 2. Specifically hide main app container */
+          .app-container {
             display: none !important;
           }
 
-          /* إظهار الجذر */
-          #root {
-            display: block !important;
-          }
-
-          /* استدعاء منطقة الطباعة للصفحة */
-          #printable-area {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            z-index: 99999 !important;
-            opacity: 1 !important;
-            visibility: visible !important;
-            background: white !important;
+          /* 3. Reset Page */
+          html, body {
+            height: auto !important;
             overflow: visible !important;
+            background: white !important;
+            margin: 0 !important;
           }
 
-          /* ضمان ظهور المحتويات */
+          /* 4. Show and position Printable Area */
+          #printable-area {
+            display: block !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            z-index: 999999 !important;
+          }
+
+          /* 5. Show children of printable area */
           #printable-area * {
             visibility: visible !important;
-          }
-
-          /* ضبط الصفحة */
-          body, html {
-            background-color: white !important;
-            height: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: visible !important;
           }
         }
       `}</style>
       
+      {/* MAIN APP CONTAINER */}
       <div className="h-full flex flex-col text-slate-100 overflow-hidden no-print bg-slate-950 app-container" dir="rtl" style={themeStyles as React.CSSProperties}>
         {/* Backup Banner */}
         {user.role === UserRole.ADMIN && isBackupNeeded && (
@@ -304,13 +295,13 @@ function AppContent() {
         </div>
       </div>
 
-      {/* PRINTABLE AREA (Standard DOM - Off-Screen Strategy) */}
+      {/* PRINTABLE AREA (Standard DOM - Sibling to App Container) */}
       <div id="printable-area" dir="rtl">
          {printingItem && (
             <InvoiceClone 
               data={printingItem} 
               mode={printMode} 
-              signatureImg={null} 
+              signatureImg={null} // Signature removed for cleaner paper print
             />
          )}
       </div>
