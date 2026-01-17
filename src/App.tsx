@@ -194,28 +194,40 @@ function AppContent() {
   return (
     <>
       <style>{`
+        /* 1. إعدادات منطقة الطباعة في الوضع العادي (مخفية خارج الشاشة) */
+        #printable-area {
+          position: fixed;
+          left: -10000px;  /* إخراجها خارج الشاشة */
+          top: 0;
+          width: 210mm;
+          height: auto;
+          overflow: hidden;
+          z-index: -1000;
+          opacity: 0;      /* إخفاء بصري إضافي */
+        }
+
+        /* 2. إعدادات الطباعة */
         @media print {
-          /* 1. إخفاء واجهة التطبيق فقط (وليس الجذر) */
+          /* إخفاء واجهة التطبيق */
           .app-container, .toasts-container, .no-print, header, nav, main {
             display: none !important;
           }
 
-          /* 2. التأكد من أن الجذر ظاهر */
+          /* إظهار الجذر */
           #root {
             display: block !important;
           }
 
-          /* 3. إظهار منطقة الطباعة وتنسيقها */
+          /* استدعاء منطقة الطباعة للصفحة */
           #printable-area {
-            display: block !important;
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 100% !important;
-            height: auto !important;
             z-index: 99999 !important;
-            background: white !important;
             opacity: 1 !important;
+            visibility: visible !important;
+            background: white !important;
+            overflow: visible !important;
           }
 
           /* ضمان ظهور المحتويات */
@@ -223,12 +235,13 @@ function AppContent() {
             visibility: visible !important;
           }
 
-          /* ريست لخصائص الصفحة */
+          /* ضبط الصفحة */
           body, html {
             background-color: white !important;
-            height: auto !important;
-            overflow: visible !important;
+            height: 100% !important;
             margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
           }
         }
       `}</style>
@@ -291,10 +304,9 @@ function AppContent() {
         </div>
       </div>
 
-      {/* PRINTABLE AREA (Standard DOM) */}
-      <div id="printable-area" style={{ display: 'none' }} dir="rtl">
+      {/* PRINTABLE AREA (Standard DOM - Off-Screen Strategy) */}
+      <div id="printable-area" dir="rtl">
          {printingItem && (
-            // IMPORTANT: Passing null to signatureImg to avoid printing the electronic signature
             <InvoiceClone 
               data={printingItem} 
               mode={printMode} 
