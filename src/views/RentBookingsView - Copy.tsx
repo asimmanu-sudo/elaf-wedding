@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Printer, Ruler, Edit, Trash2, AlertTriangle, Calculator, RefreshCw, Check, MessageCircle, Send, Calendar as CalendarIcon, List, ChevronRight, ChevronLeft } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
@@ -10,8 +9,8 @@ import PrintPreviewModal from '../components/PrintPreviewModal';
 
 export default function RentBookingsView({ dresses, bookings, finance, query, hasPerm, showToast, addLog, onPrint }: any) {
   const [subTab, setSubTab] = useState<'current' | 'past' | 'fittings'>('current');
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list'); // New State
+  const [currentMonth, setCurrentMonth] = useState(new Date()); // New State for Calendar
   const [modal, setModal] = useState<any>(null);
   const [pendingSave, setPendingSave] = useState<any>(null);
   const [printFilter, setPrintFilter] = useState({ month: '', selectedIds: [] as string[] });
@@ -24,6 +23,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
   const [waTemplates, setWaTemplates] = useState(DEFAULT_WA_TEMPLATES);
 
   useEffect(() => {
+      // Fetch templates once on mount
       cloudDb.getDoc(COLLS.METADATA, 'whatsapp_templates').then(doc => {
           if (doc) setWaTemplates(doc);
       });
@@ -33,7 +33,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
   const [phoneCode, setPhoneCode] = useState('+20');
   const [localPhone, setLocalPhone] = useState('');
 
-  // SMART CALCULATION STATE (Unified)
+  // SMART CALCULATION STATE
   const [calcState, setCalcState] = useState({ 
     currency: 'EGP', 
     egpAmount: 0, 
@@ -64,10 +64,14 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
     const firstDayOfMonth = new Date(year, month, 1);
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     
+    // Adjust for RTL (Saturday start): JS getDay() 0=Sun, 6=Sat. 
+    // We want Sat=0, Sun=1, ... Fri=6
     const startDay = (firstDayOfMonth.getDay() + 1) % 7; 
 
     const days = [];
+    // Padding days
     for (let i = 0; i < startDay; i++) days.push(null);
+    // Real days
     for (let i = 1; i <= daysInMonth; i++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
         days.push({
@@ -107,6 +111,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
   const handleFitting1Click = async (b: any) => {
       const isDone = b.fitting1Done;
       if (isDone) {
+          // If already done, toggle off
           await cloudDb.update(COLLS.BOOKINGS, b.id, { fitting1Done: false });
           return;
       }
@@ -123,10 +128,13 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
       }
   };
 
+  // OPEN ADD/EDIT MODAL & INIT PHONE
   const openModal = (type: 'ADD' | 'EDIT', item?: any) => {
       if (type === 'EDIT' && item) {
+          // Detect country code
           let code = '+20';
           let num = item.customerPhone || '';
+          
           const found = COUNTRY_CODES.find(c => c.code && num.startsWith(c.code));
           if (found) {
               code = found.code;
@@ -134,6 +142,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
           } else if (num.startsWith('0')) {
               code = '+20';
           }
+          
           setPhoneCode(code);
           setLocalPhone(num);
           setModal({ ...item, type: 'EDIT' });
@@ -182,6 +191,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
      setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
   };
 
+  // --- WHATSAPP LOGIC ---
   const handleWhatsAppClick = (b: any) => {
       setModal({ type: 'WHATSAPP_TEMPLATES', data: b });
   };
@@ -196,55 +206,52 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
           Deposit: data.paidDeposit,
           Remaining: data.remainingToPay
       };
+
       const url = getWhatsAppLink(data.customerPhone, templateType, waData, waTemplates);
       window.open(url, '_blank');
       setModal(null);
   };
 
-  // --- BIDIRECTIONAL CURRENCY CALCULATION ---
+  // --- SMART CALCULATION LOGIC ---
   const handlePaymentMethodChange = (pm: string) => {
       let curr = 'EGP';
       if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
       else if (pm.includes('دولار') || pm.includes('USD')) curr = 'USD';
-      
-      setCalcState(prev => ({ ...prev, currency: curr }));
+      setCalcState(prev => ({ ...prev, currency: curr, rate: 0, foreignAmount: 0 }));
       setModal((prev:any) => ({...prev, paymentMethod: pm }));
   };
 
-  const handleCalc = (type: 'EGP' | 'FOREIGN' | 'RATE', val: number) => {
+  const handleEgpChange = (val: number) => {
       setCalcState(prev => {
-          const newState = { ...prev };
-          if (type === 'RATE') newState.rate = val;
-          if (type === 'FOREIGN') newState.foreignAmount = val;
-          if (type === 'EGP') newState.egpAmount = val;
-
-          const { currency, rate, foreignAmount, egpAmount } = newState;
-
-          // LOGIC:
-          // USD: EGP = Foreign * Rate
-          // SDG: EGP = Foreign / Rate
-
-          if (type === 'RATE') {
-              // If rate changes, recalculate EGP based on Foreign (master)
-              if (foreignAmount > 0) {
-                  newState.egpAmount = currency === 'USD' ? foreignAmount * rate : (rate > 0 ? foreignAmount / rate : 0);
-              }
-          } else if (type === 'FOREIGN') {
-              // If foreign changes, calculate EGP
-              newState.egpAmount = currency === 'USD' ? val * rate : (rate > 0 ? val / rate : 0);
-          } else if (type === 'EGP') {
-              // If EGP changes, calculate Foreign
-              newState.foreignAmount = currency === 'USD' ? (rate > 0 ? val / rate : 0) : val * rate;
-          }
-          
-          // Formatting
-          newState.egpAmount = parseFloat(Number(newState.egpAmount).toFixed(2));
-          newState.foreignAmount = parseFloat(Number(newState.foreignAmount).toFixed(2));
-          
-          return newState;
+          if (prev.rate === 0) return { ...prev, egpAmount: val };
+          let newForeign = 0;
+          if (prev.currency === 'SDG') newForeign = val * prev.rate;
+          else newForeign = val / prev.rate;
+          return { ...prev, egpAmount: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
       });
   };
 
+  const handleRateChange = (val: number) => {
+      setCalcState(prev => {
+          let newForeign = 0;
+          if (prev.currency === 'SDG') newForeign = prev.egpAmount * val;
+          else newForeign = val > 0 ? prev.egpAmount / val : 0;
+          return { ...prev, rate: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
+      });
+  };
+
+  const handleForeignChange = (val: number) => {
+      setCalcState(prev => {
+          let newRate = 0;
+          if (prev.egpAmount > 0) {
+              if (prev.currency === 'SDG') newRate = val / prev.egpAmount;
+              else newRate = val > 0 ? prev.egpAmount / val : 0;
+          }
+          return { ...prev, foreignAmount: val, rate: parseFloat(newRate.toFixed(4)) };
+      });
+  };
+
+  // Helper to open print modal
   const openPrintModal = (data: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE') => {
       setPrintModalData(data);
       setPrintModalMode(mode);
@@ -286,15 +293,21 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
       {/* VIEW: CALENDAR */}
       {viewMode === 'calendar' && (
         <div className="animate-fade-in space-y-4">
+            {/* Calendar Header */}
             <div className="flex items-center justify-between bg-slate-900 border border-white/5 p-4 rounded-3xl">
                 <button onClick={() => changeMonth(-1)} className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center"><ChevronRight /></button>
                 <h3 className="text-lg font-black text-white">{currentMonth.toLocaleString('ar-EG', { month: 'long', year: 'numeric' })}</h3>
                 <button onClick={() => changeMonth(1)} className="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center"><ChevronLeft /></button>
             </div>
+
+            {/* Calendar Grid */}
             <div className="grid grid-cols-7 gap-1">
+                {/* Days Header */}
                 {['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'].map(d => (
                     <div key={d} className="text-center py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">{d}</div>
                 ))}
+
+                {/* Calendar Cells */}
                 {calendarData.map((d, idx) => {
                     if (!d) return <div key={idx} className="bg-transparent h-24 md:h-32"></div>;
                     const isToday = d.date === today;
@@ -319,7 +332,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
         </div>
       )}
 
-      {/* VIEW: LIST */}
+      {/* VIEW: LIST (Existing Grid) */}
       {viewMode === 'list' && (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {subTab === 'fittings' ? (
@@ -366,6 +379,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                   {hasMeasurements ? <Check size={16}/> : <Ruler size={16}/>}
                   {hasMeasurements ? 'تم أخذ المقاسات' : 'لم يتم تسجيل المقاسات'}
                 </Button>
+                {/* Print button updated to open preview */}
                 <Button variant="ghost" onClick={() => openPrintModal(b, 'DEPOSIT')} className="!w-12 !h-12 !p-0 text-brand-400"><Printer size={18}/></Button>
                 <Button variant="ghost" onClick={() => openModal('EDIT', b)} className="!w-12 !h-12 !p-0 text-surface-500"><Edit size={18}/></Button>
                 <Button variant="ghost" onClick={() => handleDelete(b)} className="!w-12 !h-12 !p-0 text-red-400"><Trash2 size={18}/></Button>
@@ -411,21 +425,37 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
         <Modal title="مراسلة العروس (واتساب)" onClose={() => setModal(null)} size="sm">
            <div className="space-y-4">
               <p className="text-sm font-bold text-slate-400 text-center mb-4">اختر نوع الرسالة للإرسال:</p>
+              
               <button onClick={() => sendWhatsApp('BOOKING_CONFIRM', modal.data)} className="w-full p-4 bg-brand-500/10 border border-brand-500/20 rounded-2xl flex items-center gap-4 hover:bg-brand-500/20 transition-all group text-right">
                  <div className="w-10 h-10 rounded-full bg-brand-500 text-white flex items-center justify-center shrink-0"><Check size={20}/></div>
-                 <div><h4 className="font-black text-white text-sm">تأكيد الحجز</h4><p className="text-[10px] text-slate-400">رسالة ترحيب وتفاصيل المواعيد والعربون</p></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">تأكيد الحجز</h4>
+                    <p className="text-[10px] text-slate-400">رسالة ترحيب وتفاصيل المواعيد والعربون</p>
+                 </div>
               </button>
+
               <button onClick={() => sendWhatsApp('PICKUP_READY', modal.data)} className="w-full p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center gap-4 hover:bg-blue-500/20 transition-all group text-right">
                  <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center shrink-0"><Check size={20}/></div>
-                 <div><h4 className="font-black text-white text-sm">التجهيز والاستلام</h4><p className="text-[10px] text-slate-400">إشعار بجاهزية الفستان والمتبقي المالي</p></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">التجهيز والاستلام</h4>
+                    <p className="text-[10px] text-slate-400">إشعار بجاهزية الفستان والمتبقي المالي</p>
+                 </div>
               </button>
+
               <button onClick={() => sendWhatsApp('RETURN_THANKS', modal.data)} className="w-full p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-4 hover:bg-emerald-500/20 transition-all group text-right">
                  <div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0"><Check size={20}/></div>
-                 <div><h4 className="font-black text-white text-sm">شكر بعد الإرجاع</h4><p className="text-[10px] text-slate-400">رسالة شكر ووداع لطيفة</p></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">شكر بعد الإرجاع</h4>
+                    <p className="text-[10px] text-slate-400">رسالة شكر ووداع لطيفة</p>
+                 </div>
               </button>
+
               <button onClick={() => sendWhatsApp('PAYMENT_REMINDER', modal.data)} className="w-full p-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl flex items-center gap-4 hover:bg-orange-500/20 transition-all group text-right">
                  <div className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center shrink-0"><AlertTriangle size={20}/></div>
-                 <div><h4 className="font-black text-white text-sm">تذكير عام</h4><p className="text-[10px] text-slate-400">تذكير بموعد أو دفعة مالية</p></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">تذكير عام</h4>
+                    <p className="text-[10px] text-slate-400">تذكير بموعد أو دفعة مالية</p>
+                 </div>
               </button>
            </div>
         </Modal>
@@ -458,7 +488,10 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                         className="w-5 h-5 accent-brand-500"
                       />
                       <div className="flex-1">
-                         <div className="flex justify-between"><span className="font-bold text-white text-sm">{b.customerName}</span><span className="text-xs text-brand-400 font-bold">{b.eventDate}</span></div>
+                         <div className="flex justify-between">
+                            <span className="font-bold text-white text-sm">{b.customerName}</span>
+                            <span className="text-xs text-brand-400 font-bold">{b.eventDate}</span>
+                         </div>
                          <p className="text-[10px] text-slate-500 font-bold mt-0.5">{b.dressName}</p>
                       </div>
                    </label>
@@ -477,13 +510,16 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
       {/* Modal - Add/Edit Booking */}
       {(modal?.type === 'ADD' || modal?.type === 'EDIT') && (
         <Modal title={modal.type === 'ADD' ? 'حجز جديد' : 'تعديل حجز'} onClose={() => setModal(null)} size="lg">
+           {/* ... Form content ... */}
+           {/* (No changes needed in the form body itself, keeping it brief for the update) */}
            <form onSubmit={async (e: any) => {
              e.preventDefault();
              const fd = new FormData(e.currentTarget);
              const drId = fd.get('dr') as string;
              const dr = dresses.find((x:any) => x.id === drId);
-             const rp = Number(fd.get('rp')); 
-             const dep = calcState.egpAmount; // Use Calculated EGP Value
+             const rp = Number(fd.get('rp')); const dep = calcState.egpAmount || Number(fd.get('dep'));
+             
+             // Combined International Phone
              const fullPhone = `${phoneCode}${localPhone}`.trim();
 
              const data: any = {
@@ -494,11 +530,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                rentalPrice: rp, paidDeposit: dep, remainingToPay: rp - dep, notes: fd.get('notes'),
                status: modal.status || BookingStatus.PENDING, 
                createdAt: modal.createdAt || today,
-               paymentMethod: fd.get('pm'), otherPaymentMethod: fd.get('opm') || '',
-               // Currency Details
-               originalCurrency: calcState.currency,
-               foreignAmount: calcState.currency !== 'EGP' ? calcState.foreignAmount : 0,
-               exchangeRate: calcState.currency !== 'EGP' ? calcState.rate : 1,
+               paymentMethod: fd.get('pm'), otherPaymentMethod: fd.get('opm') || ''
              };
 
              if (modal.type === 'EDIT') data.id = modal.id;
@@ -531,13 +563,26 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
            }} className="space-y-5">
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                <Input label="اسم العروس" name="cn" defaultValue={modal.customerName} required />
+               
                <div className="space-y-2">
                   <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">رقم الهاتف (واتساب)</label>
                   <div className="flex gap-2" dir="ltr">
-                      <select className="w-1/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none text-sm" value={phoneCode} onChange={(e) => setPhoneCode(e.target.value)}>
-                          {COUNTRY_CODES.map(c => (<option key={c.code} value={c.code}>{c.flag} {c.code}</option>))}
+                      <select 
+                        className="w-1/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none text-sm"
+                        value={phoneCode}
+                        onChange={(e) => setPhoneCode(e.target.value)}
+                      >
+                          {COUNTRY_CODES.map(c => (
+                              <option key={c.code} value={c.code}>{c.flag} {c.code}</option>
+                          ))}
                       </select>
-                      <input className="w-2/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none placeholder:text-slate-700" placeholder="10xxxxxxxx" value={localPhone} onChange={(e) => setLocalPhone(e.target.value)} required />
+                      <input 
+                        className="w-2/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none placeholder:text-slate-700"
+                        placeholder="10xxxxxxxx"
+                        value={localPhone}
+                        onChange={(e) => setLocalPhone(e.target.value)}
+                        required
+                      />
                   </div>
                </div>
              </div>
@@ -546,7 +591,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
              
              <div className="grid grid-cols-2 gap-4">
                <Input label="سعر الإيجار (EGP)" name="rp" type="number" defaultValue={modal.rentalPrice} required />
-               <Input label="العربون بالمصري (EGP)" name="dep" type="number" value={calcState.egpAmount || ''} required onChange={(e:any) => handleCalc('EGP', Number(e.target.value))} />
+               <Input label="العربون بالمصري (EGP)" name="dep" type="number" defaultValue={modal.paidDeposit} required onChange={(e:any) => handleEgpChange(Number(e.target.value))} />
              </div>
 
              <div className="space-y-2">
@@ -568,7 +613,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                       label={`المبلغ بالـ ${calcState.currency}`} 
                       type="number" 
                       value={calcState.foreignAmount || ''}
-                      onChange={(e:any) => handleCalc('FOREIGN', Number(e.target.value))} 
+                      onChange={(e:any) => handleForeignChange(Number(e.target.value))} 
                       placeholder="0.00" 
                     />
                     <Input 
@@ -576,7 +621,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                       type="number" 
                       value={calcState.rate || ''}
                       placeholder="مثلاً 55" 
-                      onChange={(e:any) => handleCalc('RATE', Number(e.target.value))}
+                      onChange={(e:any) => handleRateChange(Number(e.target.value))}
                     />
                     <p className="col-span-2 text-[10px] text-center text-slate-500 dir-ltr font-mono">
                        Formula: {calcState.currency === 'SDG' 
@@ -585,6 +630,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                     </p>
                  </div>
                )}
+
                {(modal.payMethod === 'أخرى' || modal.paymentMethod === 'أخرى') && <Input label="تفاصيل الدفع الأخرى" name="opm" defaultValue={modal.otherPaymentMethod} required />}
              </div>
 
@@ -592,7 +638,11 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
                <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">الفستان</label>
                <select name="dr" className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all" defaultValue={modal.dressId} required>
                  <option value="">-- اختر الفستان --</option>
-                 {dresses.filter((d:any) => d.type === DressType.RENT && d.status !== DressStatus.ARCHIVED && d.status !== DressStatus.SOLD).sort((a:any,b:any) => a.name.localeCompare(b.name, 'ar')).map((d:any) => (<option key={d.id} value={d.id}>{d.name} ({d.status})</option>))}
+                 {dresses.filter((d:any) => d.type === DressType.RENT && d.status !== DressStatus.ARCHIVED && d.status !== DressStatus.SOLD)
+                         .sort((a:any,b:any) => a.name.localeCompare(b.name, 'ar'))
+                         .map((d:any) => (
+                   <option key={d.id} value={d.id}>{d.name} ({d.status})</option>
+                 ))}
                </select>
              </div>
              <div className="grid grid-cols-2 gap-4">
@@ -616,11 +666,17 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
         </Modal>
       )}
 
+      {/* Other Modals (Validation, Conflict, Measure) - No Changes Needed */}
       {modal?.type === 'VALIDATION_WARNING' && (
         <Modal title="تنبيه هام" onClose={() => setModal(null)}>
             <div className="text-center space-y-6">
-               <div className="w-20 h-20 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 border border-orange-500/20"><AlertTriangle size={40} /></div>
-               <div><h3 className="font-black text-white text-xl">{modal.msg}</h3><p className="text-sm text-slate-400 mt-2">يرجى مراجعة البيانات المدخلة.</p></div>
+               <div className="w-20 h-20 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 border border-orange-500/20">
+                   <AlertTriangle size={40} />
+               </div>
+               <div>
+                   <h3 className="font-black text-white text-xl">{modal.msg}</h3>
+                   <p className="text-sm text-slate-400 mt-2">يرجى مراجعة البيانات المدخلة.</p>
+               </div>
                <Button onClick={() => setModal({ ...pendingSave, type: pendingSave.isEdit ? 'EDIT' : 'ADD' })} className="w-full">تعديل البيانات</Button>
             </div>
         </Modal>
@@ -629,7 +685,9 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
       {modal?.type === 'CONFLICT_WARNING' && (
         <Modal title="تحذير تعارض حجوزات" onClose={() => setModal(null)}>
             <div className="space-y-4 text-center">
-                <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 mb-2"><AlertTriangle size={32} /></div>
+                <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 mb-2">
+                    <AlertTriangle size={32} />
+                </div>
                 <h3 className="text-lg font-bold text-white">يوجد حجوزات قريبة لهذا الفستان</h3>
                 <p className="text-sm text-slate-400">الفستان محجوز في تواريخ قريبة جداً (يومين قبل أو بعد). هل أنت متأكد من الاستمرار؟</p>
                 <div className="bg-slate-950/50 rounded-xl p-4 text-right space-y-2 max-h-40 overflow-y-auto custom-scrollbar border border-white/5">
@@ -680,8 +738,17 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
         </Modal>
       )}
 
+      {/* PRINT PREVIEW MODAL */}
       {printModalData && (
-          <PrintPreviewModal data={printModalData} mode={printModalMode} onClose={() => setPrintModalData(null)} onPrint={(imageSrc) => { onPrint(imageSrc); setPrintModalData(null); }} />
+          <PrintPreviewModal 
+            data={printModalData} 
+            mode={printModalMode} 
+            onClose={() => setPrintModalData(null)}
+            onPrint={(imageSrc) => {
+                onPrint(imageSrc); // Call global print logic (hides UI, shows print div)
+                setPrintModalData(null); // Close modal
+            }}
+          />
       )}
     </div>
   );

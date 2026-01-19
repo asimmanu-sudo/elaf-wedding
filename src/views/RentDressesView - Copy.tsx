@@ -14,6 +14,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingSave, setPendingSave] = useState<any>(null);
   
+  // View Mode: 'list' for compact mobile view, 'grid' for desktop cards
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(window.innerWidth < 768 ? 'list' : 'grid');
 
   // --- SMART BOOKING STATES ---
@@ -38,38 +39,42 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
     }).sort((a: any, b: any) => a.name.localeCompare(b.name, 'ar'));
   }, [dresses, subTab, query, filters]);
 
-  // --- BIDIRECTIONAL CURRENCY CALCULATION ---
+  // --- SMART CALCULATION LOGIC (Matched with RentBookingsView) ---
   const handlePaymentMethodChange = (pm: string) => {
       let curr = 'EGP';
       if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
       else if (pm.includes('دولار') || pm.includes('USD')) curr = 'USD';
-      setCalcState(prev => ({ ...prev, currency: curr }));
+      setCalcState(prev => ({ ...prev, currency: curr, rate: 0, foreignAmount: 0 }));
       setModal((prev:any) => ({...prev, paymentMethod: pm }));
   };
 
-  const handleCalc = (type: 'EGP' | 'FOREIGN' | 'RATE', val: number) => {
+  const handleEgpChange = (val: number) => {
       setCalcState(prev => {
-          const newState = { ...prev };
-          if (type === 'RATE') newState.rate = val;
-          if (type === 'FOREIGN') newState.foreignAmount = val;
-          if (type === 'EGP') newState.egpAmount = val;
+          if (prev.rate === 0) return { ...prev, egpAmount: val };
+          let newForeign = 0;
+          if (prev.currency === 'SDG') newForeign = val * prev.rate;
+          else newForeign = val / prev.rate;
+          return { ...prev, egpAmount: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
+      });
+  };
 
-          const { currency, rate, foreignAmount, egpAmount } = newState;
+  const handleRateChange = (val: number) => {
+      setCalcState(prev => {
+          let newForeign = 0;
+          if (prev.currency === 'SDG') newForeign = prev.egpAmount * val;
+          else newForeign = val > 0 ? prev.egpAmount / val : 0;
+          return { ...prev, rate: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
+      });
+  };
 
-          if (type === 'RATE') {
-              if (foreignAmount > 0) {
-                  newState.egpAmount = currency === 'USD' ? foreignAmount * rate : (rate > 0 ? foreignAmount / rate : 0);
-              }
-          } else if (type === 'FOREIGN') {
-              newState.egpAmount = currency === 'USD' ? val * rate : (rate > 0 ? val / rate : 0);
-          } else if (type === 'EGP') {
-              newState.foreignAmount = currency === 'USD' ? (rate > 0 ? val / rate : 0) : val * rate;
+  const handleForeignChange = (val: number) => {
+      setCalcState(prev => {
+          let newRate = 0;
+          if (prev.egpAmount > 0) {
+              if (prev.currency === 'SDG') newRate = val / prev.egpAmount;
+              else newRate = val > 0 ? prev.egpAmount / val : 0;
           }
-          
-          newState.egpAmount = parseFloat(Number(newState.egpAmount).toFixed(2));
-          newState.foreignAmount = parseFloat(Number(newState.foreignAmount).toFixed(2));
-          
-          return newState;
+          return { ...prev, foreignAmount: val, rate: parseFloat(newRate.toFixed(4)) };
       });
   };
 
@@ -77,6 +82,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
 
   const openBookModal = (dress: any) => {
       setModal({ type: 'BOOK_FROM_DRESS', dress });
+      // Reset Smart Booking States
       setPhoneCode('+20');
       setLocalPhone('');
       setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
@@ -85,6 +91,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
   const executeSaveBooking = async (data: any) => {
      let bId = data.id;
      
+     // Add Currency Data to Payload
      const finalData = {
         ...data,
         originalCurrency: calcState.currency !== 'EGP' ? calcState.currency : 'EGP',
@@ -143,6 +150,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Top Controls */}
       <div className="flex flex-col md:flex-row gap-4 justify-between items-center sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl p-2 rounded-3xl border-b border-white/5">
           <div className="flex bg-slate-900/60 p-1.5 rounded-2xl border border-white/5 w-full md:w-auto">
             {['available', 'archived', 'ratings'].map(t => (
@@ -174,6 +182,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
         <Button onClick={() => setModal({ type: 'ADD', condition: DressCondition.NEW })} className="w-full !rounded-[2rem] h-14 shadow-xl"><Plus size={20}/> تسجيل فستان جديد</Button>
       )}
 
+      {/* Content Area */}
       {subTab === 'ratings' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[...dresses].filter(d => d.type === DressType.RENT).sort((a,b) => b.rentalCount - a.rentalCount).map((d: any, idx: number) => (
@@ -192,6 +201,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
           <div className={viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "space-y-3"}>
             {filtered.map((d: any) => (
                viewMode === 'grid' ? (
+                // GRID CARD VIEW (Desktop Optimized)
                 <Card key={d.id} className="group overflow-hidden !p-0 border border-white/10 hover:border-brand-500/50 transition-colors">
                   <div className="h-64 relative overflow-hidden">
                     {d.imageUrl ? <img src={d.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={d.name} /> : <div className="w-full h-full bg-slate-900 flex items-center justify-center text-surface-700"><Shirt size={48} strokeWidth={1} /></div>}
@@ -215,11 +225,15 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
                   </div>
                 </Card>
                ) : (
+                // COMPACT LIST VIEW (Mobile Optimized)
                 <div key={d.id} className="flex bg-slate-900 border border-white/5 rounded-2xl overflow-hidden h-28 relative group shadow-sm transition-all hover:border-brand-500/30">
+                    {/* Image Section (Right Side in RTL) */}
                     <div className="w-24 h-full relative shrink-0 border-l border-white/5">
                         {d.imageUrl ? <img src={d.imageUrl} className="w-full h-full object-cover" alt={d.name} /> : <div className="w-full h-full bg-slate-800 flex items-center justify-center"><Shirt size={24} className="text-slate-600"/></div>}
                         <div className={`absolute bottom-0 inset-x-0 h-1 ${d.status === DressStatus.AVAILABLE ? 'bg-emerald-500' : 'bg-orange-500'}`}></div>
                     </div>
+
+                    {/* Info Section (Middle) */}
                     <div className="flex-1 p-3 flex flex-col justify-center gap-1 min-w-0">
                         <div className="flex justify-between items-start">
                             <h3 className="font-black text-white text-sm truncate leading-tight">{d.name}</h3>
@@ -227,10 +241,13 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
                         </div>
                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{d.style}</p>
                     </div>
+
+                    {/* Actions Section (Left Side) */}
                     <div className="w-14 bg-slate-950/50 border-r border-white/5 flex flex-col items-center justify-evenly p-1">
                         <button onClick={() => openBookModal(d)} className="w-9 h-9 rounded-full bg-brand-500 text-white flex items-center justify-center shadow-lg active:scale-90 transition-transform">
                             <Calendar size={16} />
                         </button>
+                        
                         <div className="flex flex-col gap-2">
                             {subTab === 'available' ? (
                                 <button onClick={() => setModal({ ...d, type: 'EDIT' })} className="text-slate-400 hover:text-white transition-colors"><Edit size={16} /></button>
@@ -290,7 +307,9 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
              e.preventDefault();
              const fd = new FormData(e.currentTarget);
              const dr = modal.dress;
-             const rp = Number(fd.get('rp')); const dep = calcState.egpAmount; // Use Calculated EGP
+             const rp = Number(fd.get('rp')); const dep = calcState.egpAmount || Number(fd.get('dep'));
+             
+             // Combined International Phone
              const fullPhone = `${phoneCode}${localPhone}`.trim();
 
              if (dep > rp) {
@@ -301,11 +320,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
                      dressId: dr.id, dressName: dr.name, eventDate: fd.get('ed'), deliveryDate: fd.get('dd'),
                      rentalPrice: rp, paidDeposit: dep, remainingToPay: rp - dep, notes: fd.get('notes'),
                      paymentMethod: fd.get('pm'), otherPaymentMethod: fd.get('opm') || '',
-                     dress: modal.dress,
-                     // Currency Info
-                     originalCurrency: calcState.currency,
-                     foreignAmount: calcState.currency !== 'EGP' ? calcState.foreignAmount : 0,
-                     exchangeRate: calcState.currency !== 'EGP' ? calcState.rate : 1,
+                     dress: modal.dress
                  });
                  setModal({ type: 'VALIDATION_WARNING', msg: 'قيمة العربون أكبر من سعر الإيجار!' });
                  return;
@@ -318,10 +333,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
                dressId: dr.id, dressName: dr.name, eventDate: fd.get('ed'), deliveryDate: fd.get('dd'),
                rentalPrice: rp, paidDeposit: dep, remainingToPay: rp - dep, notes: fd.get('notes'),
                status: BookingStatus.PENDING, createdAt: today,
-               paymentMethod: fd.get('pm'), otherPaymentMethod: fd.get('opm') || '',
-               originalCurrency: calcState.currency,
-               foreignAmount: calcState.currency !== 'EGP' ? calcState.foreignAmount : 0,
-               exchangeRate: calcState.currency !== 'EGP' ? calcState.rate : 1,
+               paymentMethod: fd.get('pm'), otherPaymentMethod: fd.get('opm') || ''
              };
 
              const targetDate = new Date(data.eventDate);
@@ -342,16 +354,31 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
            }} className="space-y-5">
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                <Input label="اسم العروس" name="cn" defaultValue={modal.customerName} required />
+               
+               {/* SMART PHONE INPUT */}
                <div className="space-y-2">
                   <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">رقم الهاتف (واتساب)</label>
                   <div className="flex gap-2" dir="ltr">
-                      <select className="w-1/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none text-sm" value={phoneCode} onChange={(e) => setPhoneCode(e.target.value)}>
-                          {COUNTRY_CODES.map(c => (<option key={c.code} value={c.code}>{c.flag} {c.code}</option>))}
+                      <select 
+                        className="w-1/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none text-sm"
+                        value={phoneCode}
+                        onChange={(e) => setPhoneCode(e.target.value)}
+                      >
+                          {COUNTRY_CODES.map(c => (
+                              <option key={c.code} value={c.code}>{c.flag} {c.code}</option>
+                          ))}
                       </select>
-                      <input className="w-2/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none placeholder:text-slate-700" placeholder="10xxxxxxxx" value={localPhone} onChange={(e) => setLocalPhone(e.target.value)} required />
+                      <input 
+                        className="w-2/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none placeholder:text-slate-700"
+                        placeholder="10xxxxxxxx"
+                        value={localPhone}
+                        onChange={(e) => setLocalPhone(e.target.value)}
+                        required
+                      />
                   </div>
                </div>
              </div>
+
              <Input label="العنوان" name="ca" defaultValue={modal.customerAddress} />
              <div className="grid grid-cols-2 gap-4">
                <Input label="تاريخ المناسبة" name="ed" type="date" defaultValue={modal.eventDate} required onChange={(e:any) => {
@@ -368,7 +395,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
              
              <div className="grid grid-cols-2 gap-4">
                <Input label="سعر الإيجار (EGP)" name="rp" type="number" defaultValue={modal.rentalPrice || modal.dress.rentalPrice} required />
-               <Input label="العربون بالمصري (EGP)" name="dep" type="number" value={calcState.egpAmount || ''} required onChange={(e:any) => handleCalc('EGP', Number(e.target.value))} />
+               <Input label="العربون بالمصري (EGP)" name="dep" type="number" defaultValue={modal.paidDeposit} required onChange={(e:any) => handleEgpChange(Number(e.target.value))} />
              </div>
 
              <div className="space-y-2">
@@ -377,6 +404,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
                   <option value="">-- اختر --</option>
                   {PAYMENT_METHODS.map(p=><option key={p} value={p}>{p}</option>)}
                </select>
+
                {/* SMART CURRENCY CALCULATOR */}
                {calcState.currency !== 'EGP' && (
                  <div className="p-4 bg-brand-500/5 border border-brand-500/20 rounded-2xl animate-slide-up grid grid-cols-2 gap-4">
@@ -389,7 +417,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
                       label={`المبلغ بالـ ${calcState.currency}`} 
                       type="number" 
                       value={calcState.foreignAmount || ''}
-                      onChange={(e:any) => handleCalc('FOREIGN', Number(e.target.value))} 
+                      onChange={(e:any) => handleForeignChange(Number(e.target.value))} 
                       placeholder="0.00" 
                     />
                     <Input 
@@ -397,7 +425,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
                       type="number" 
                       value={calcState.rate || ''}
                       placeholder="مثلاً 55" 
-                      onChange={(e:any) => handleCalc('RATE', Number(e.target.value))}
+                      onChange={(e:any) => handleRateChange(Number(e.target.value))}
                     />
                     <p className="col-span-2 text-[10px] text-center text-slate-500 dir-ltr font-mono">
                        Formula: {calcState.currency === 'SDG' 
@@ -406,6 +434,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
                     </p>
                  </div>
                )}
+
                {(modal.payMethod === 'أخرى' || modal.paymentMethod === 'أخرى') && <Input label="تفاصيل الدفع الأخرى" name="opm" defaultValue={modal.otherPaymentMethod} required />}
              </div>
              <textarea name="notes" placeholder="ملاحظات..." defaultValue={modal.notes} className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold min-h-[100px]" />
@@ -417,8 +446,13 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
       {modal?.type === 'VALIDATION_WARNING' && (
         <Modal title="تنبيه هام" onClose={() => setModal(null)}>
             <div className="text-center space-y-6">
-               <div className="w-20 h-20 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 border border-orange-500/20"><AlertTriangle size={40} /></div>
-               <div><h3 className="font-black text-white text-xl">{modal.msg}</h3><p className="text-sm text-slate-400 mt-2">يرجى مراجعة البيانات المدخلة.</p></div>
+               <div className="w-20 h-20 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 border border-orange-500/20">
+                   <AlertTriangle size={40} />
+               </div>
+               <div>
+                   <h3 className="font-black text-white text-xl">{modal.msg}</h3>
+                   <p className="text-sm text-slate-400 mt-2">يرجى مراجعة البيانات المدخلة.</p>
+               </div>
                <Button onClick={() => setModal({ ...pendingSave, type: 'BOOK_FROM_DRESS' })} className="w-full">تعديل البيانات</Button>
             </div>
         </Modal>
@@ -427,11 +461,18 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
       {modal?.type === 'CONFLICT_WARNING' && (
         <Modal title="تحذير تعارض حجوزات" onClose={() => setModal(null)}>
             <div className="space-y-4 text-center">
-                <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 mb-2"><AlertTriangle size={32} /></div>
+                <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 mb-2">
+                    <AlertTriangle size={32} />
+                </div>
                 <h3 className="text-lg font-bold text-white">يوجد حجوزات قريبة لهذا الفستان</h3>
                 <p className="text-sm text-slate-400">الفستان محجوز في تواريخ قريبة جداً. هل أنت متأكد؟</p>
                 <div className="bg-slate-950/50 rounded-xl p-4 text-right space-y-2 border border-white/5">
-                    {modal.conflicts.map((c: any) => (<div key={c.id} className="p-3 bg-white/5 rounded-lg border border-white/5"><p className="text-white font-bold text-sm">{c.customerName}</p><p className="text-xs text-brand-400 font-bold mt-1">تاريخ المناسبة: {c.eventDate}</p></div>))}
+                    {modal.conflicts.map((c: any) => (
+                        <div key={c.id} className="p-3 bg-white/5 rounded-lg border border-white/5">
+                            <p className="text-white font-bold text-sm">{c.customerName}</p>
+                            <p className="text-xs text-brand-400 font-bold mt-1">تاريخ المناسبة: {c.eventDate}</p>
+                        </div>
+                    ))}
                 </div>
                 <div className="grid grid-cols-2 gap-4 mt-6">
                     <Button variant="ghost" onClick={() => setModal(null)}>إلغاء</Button>
@@ -441,6 +482,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
         </Modal>
       )}
       
+      {/* CONFIRM DELETE/RESTORE MODALS */}
       {modal?.type === 'CONFIRM_DELETE_FINAL' && (
         <ConfirmModal 
           title="حذف نهائي"

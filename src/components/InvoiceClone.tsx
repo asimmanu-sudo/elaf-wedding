@@ -337,10 +337,15 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">رقم الهاتف</label>
                   <p className="text-base font-bold text-slate-700 tracking-wider" dir="ltr">{phone}</p>
               </div>
-              <div className="text-left">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">{!isTailoring ? 'تاريخ المناسبة' : 'تاريخ التسليم'}</label>
-                  <p className="text-base font-bold text-[#B59410]" dir="ltr">{evDate}</p>
-              </div>
+              
+              {/* Hide Delivery Date ONLY if it is Tailoring/Sale */}
+              {!isTailoring && (
+                <div className="text-left">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">تاريخ المناسبة</label>
+                    <p className="text-base font-bold text-[#B59410]" dir="ltr">{evDate}</p>
+                </div>
+              )}
+
               {address && (
                   <div className="col-span-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">العنوان</label>

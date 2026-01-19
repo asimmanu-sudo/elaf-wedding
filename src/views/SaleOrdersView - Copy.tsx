@@ -30,7 +30,7 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
   const [phoneCode, setPhoneCode] = useState('+20');
   const [localPhone, setLocalPhone] = useState('');
 
-  // SMART CALCULATION STATE (Unified)
+  // SMART CALCULATION STATE
   const [calcState, setCalcState] = useState({ 
     currency: 'EGP', 
     egpAmount: 0, 
@@ -65,10 +65,12 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
     }
   };
 
+  // OPEN ADD/EDIT MODAL & INIT PHONE
   const openModal = (type: 'ADD' | 'EDIT', item?: any) => {
       if (type === 'EDIT' && item) {
           let code = '+20';
           let num = item.bridePhone || '';
+          
           const found = COUNTRY_CODES.find(c => c.code && num.startsWith(c.code));
           if (found) {
               code = found.code;
@@ -76,6 +78,7 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
           } else if (num.startsWith('0')) {
               code = '+20';
           }
+          
           setPhoneCode(code);
           setLocalPhone(num);
           setModal({ ...item, type: 'EDIT' });
@@ -120,6 +123,7 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
      setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
   };
 
+  // --- WHATSAPP LOGIC ---
   const handleWhatsAppClick = (s: any) => {
       setModal({ type: 'WHATSAPP_TEMPLATES', data: s });
   };
@@ -132,51 +136,52 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
           Deposit: data.deposit,
           Remaining: data.remainingFromBride
       };
+
       const url = getWhatsAppLink(data.bridePhone, templateType, waData, waTemplates);
       window.open(url, '_blank');
       setModal(null);
   };
 
-  // --- BIDIRECTIONAL CURRENCY CALCULATION ---
+  // --- SMART CALCULATION LOGIC ---
   const handlePaymentMethodChange = (pm: string) => {
       let curr = 'EGP';
       if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
       else if (pm.includes('دولار') || pm.includes('USD')) curr = 'USD';
-      
-      setCalcState(prev => ({ ...prev, currency: curr }));
+      setCalcState(prev => ({ ...prev, currency: curr, rate: 0, foreignAmount: 0 }));
       setModal((prev:any) => ({...prev, paymentMethod: pm }));
   };
 
-  const handleCalc = (type: 'EGP' | 'FOREIGN' | 'RATE', val: number) => {
+  const handleEgpChange = (val: number) => {
       setCalcState(prev => {
-          const newState = { ...prev };
-          if (type === 'RATE') newState.rate = val;
-          if (type === 'FOREIGN') newState.foreignAmount = val;
-          if (type === 'EGP') newState.egpAmount = val;
-
-          const { currency, rate, foreignAmount, egpAmount } = newState;
-
-          // LOGIC:
-          // USD: EGP = Foreign * Rate
-          // SDG: EGP = Foreign / Rate
-
-          if (type === 'RATE') {
-              if (foreignAmount > 0) {
-                  newState.egpAmount = currency === 'USD' ? foreignAmount * rate : (rate > 0 ? foreignAmount / rate : 0);
-              }
-          } else if (type === 'FOREIGN') {
-              newState.egpAmount = currency === 'USD' ? val * rate : (rate > 0 ? val / rate : 0);
-          } else if (type === 'EGP') {
-              newState.foreignAmount = currency === 'USD' ? (rate > 0 ? val / rate : 0) : val * rate;
-          }
-          
-          newState.egpAmount = parseFloat(Number(newState.egpAmount).toFixed(2));
-          newState.foreignAmount = parseFloat(Number(newState.foreignAmount).toFixed(2));
-          
-          return newState;
+          if (prev.rate === 0) return { ...prev, egpAmount: val };
+          let newForeign = 0;
+          if (prev.currency === 'SDG') newForeign = val * prev.rate;
+          else newForeign = val / prev.rate;
+          return { ...prev, egpAmount: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
       });
   };
 
+  const handleRateChange = (val: number) => {
+      setCalcState(prev => {
+          let newForeign = 0;
+          if (prev.currency === 'SDG') newForeign = prev.egpAmount * val;
+          else newForeign = val > 0 ? prev.egpAmount / val : 0;
+          return { ...prev, rate: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
+      });
+  };
+
+  const handleForeignChange = (val: number) => {
+      setCalcState(prev => {
+          let newRate = 0;
+          if (prev.egpAmount > 0) {
+              if (prev.currency === 'SDG') newRate = val / prev.egpAmount;
+              else newRate = val > 0 ? prev.egpAmount / val : 0;
+          }
+          return { ...prev, foreignAmount: val, rate: parseFloat(newRate.toFixed(4)) };
+      });
+  };
+
+  // Helper to open print modal
   const openPrintModal = (data: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE') => {
       setPrintModalData(data);
       setPrintModalMode(mode);
@@ -249,17 +254,29 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
         <Modal title="مراسلة العروس (واتساب)" onClose={() => setModal(null)} size="sm">
            <div className="space-y-4">
               <p className="text-sm font-bold text-slate-400 text-center mb-4">اختر نوع الرسالة للإرسال:</p>
+              
               <button onClick={() => sendWhatsApp('SALE_CONFIRM', modal.data)} className="w-full p-4 bg-brand-500/10 border border-brand-500/20 rounded-2xl flex items-center gap-4 hover:bg-brand-500/20 transition-all group text-right">
                  <div className="w-10 h-10 rounded-full bg-brand-500 text-white flex items-center justify-center shrink-0"><Check size={20}/></div>
-                 <div><h4 className="font-black text-white text-sm">تأكيد التفصيل/البيع</h4><p className="text-[10px] text-slate-400">تأكيد الموديل والمقاسات وموعد الاستلام</p></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">تأكيد التفصيل/البيع</h4>
+                    <p className="text-[10px] text-slate-400">تأكيد الموديل والمقاسات وموعد الاستلام</p>
+                 </div>
               </button>
+
               <button onClick={() => sendWhatsApp('PICKUP_READY', modal.data)} className="w-full p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center gap-4 hover:bg-blue-500/20 transition-all group text-right">
                  <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center shrink-0"><Check size={20}/></div>
-                 <div><h4 className="font-black text-white text-sm">التجهيز والاستلام</h4><p className="text-[10px] text-slate-400">إشعار بجاهزية الفستان والمتبقي المالي</p></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">التجهيز والاستلام</h4>
+                    <p className="text-[10px] text-slate-400">إشعار بجاهزية الفستان والمتبقي المالي</p>
+                 </div>
               </button>
+
               <button onClick={() => sendWhatsApp('PAYMENT_REMINDER', modal.data)} className="w-full p-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl flex items-center gap-4 hover:bg-orange-500/20 transition-all group text-right">
                  <div className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center shrink-0"><AlertTriangle size={20}/></div>
-                 <div><h4 className="font-black text-white text-sm">تذكير عام</h4><p className="text-[10px] text-slate-400">تذكير بموعد أو دفعة مالية</p></div>
+                 <div>
+                    <h4 className="font-black text-white text-sm">تذكير عام</h4>
+                    <p className="text-[10px] text-slate-400">تذكير بموعد أو دفعة مالية</p>
+                 </div>
               </button>
            </div>
         </Modal>
@@ -274,7 +291,9 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
              const fc = fd.get('fc') as string;
              const sp = Number(fd.get('sp')); 
              const fp = Number(fd.get('fp'));
-             const dep = calcState.egpAmount; // Use Calculated EGP Value
+             const dep = calcState.egpAmount || Number(fd.get('dep'));
+             
+             // Combined International Phone
              const fullPhone = `${phoneCode}${localPhone}`.trim();
 
              const data: any = {
@@ -293,11 +312,7 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
                factoryStatus: modal.factoryStatus || FactoryPaymentStatus.UNPAID,
                orderDate: modal.orderDate || today,
                paymentMethod: fd.get('pm'), 
-               otherPaymentMethod: fd.get('opm') || '',
-               // Currency Details
-               originalCurrency: calcState.currency,
-               foreignAmount: calcState.currency !== 'EGP' ? calcState.foreignAmount : 0,
-               exchangeRate: calcState.currency !== 'EGP' ? calcState.rate : 1,
+               otherPaymentMethod: fd.get('opm') || ''
              };
 
              if (modal.type === 'EDIT') data.id = modal.id;
@@ -312,13 +327,26 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
            }} className="space-y-5">
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                <Input label="اسم العروس" name="bn" defaultValue={modal.brideName} required />
+               
                <div className="space-y-2">
                   <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">رقم الهاتف (واتساب)</label>
                   <div className="flex gap-2" dir="ltr">
-                      <select className="w-1/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none text-sm" value={phoneCode} onChange={(e) => setPhoneCode(e.target.value)}>
-                          {COUNTRY_CODES.map(c => (<option key={c.code} value={c.code}>{c.flag} {c.code}</option>))}
+                      <select 
+                        className="w-1/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none text-sm"
+                        value={phoneCode}
+                        onChange={(e) => setPhoneCode(e.target.value)}
+                      >
+                          {COUNTRY_CODES.map(c => (
+                              <option key={c.code} value={c.code}>{c.flag} {c.code}</option>
+                          ))}
                       </select>
-                      <input className="w-2/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none placeholder:text-slate-700" placeholder="10xxxxxxxx" value={localPhone} onChange={(e) => setLocalPhone(e.target.value)} required />
+                      <input 
+                        className="w-2/3 bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none placeholder:text-slate-700"
+                        placeholder="10xxxxxxxx"
+                        value={localPhone}
+                        onChange={(e) => setLocalPhone(e.target.value)}
+                        required
+                      />
                   </div>
                </div>
              </div>
@@ -336,7 +364,7 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
              </div>
 
              <div className="grid grid-cols-2 gap-4">
-               <Input label="العربون المدفوع (EGP)" name="dep" type="number" value={calcState.egpAmount || ''} required onChange={(e:any) => handleCalc('EGP', Number(e.target.value))} />
+               <Input label="العربون المدفوع (EGP)" name="dep" type="number" defaultValue={modal.deposit} required onChange={(e:any) => handleEgpChange(Number(e.target.value))} />
                <div className="space-y-2">
                  <label className="text-[11px] font-black text-white px-4 leading-none italic uppercase tracking-widest">طريقة الدفع</label>
                  <select name="pm" className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none focus:ring-2 focus:ring-brand-500" defaultValue={modal.paymentMethod} onChange={(e:any)=>handlePaymentMethodChange(e.target.value)} required>
@@ -358,7 +386,7 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
                     label={`المبلغ بالـ ${calcState.currency}`} 
                     type="number" 
                     value={calcState.foreignAmount || ''}
-                    onChange={(e:any) => handleCalc('FOREIGN', Number(e.target.value))} 
+                    onChange={(e:any) => handleForeignChange(Number(e.target.value))} 
                     placeholder="0.00" 
                   />
                   <Input 
@@ -366,7 +394,7 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
                     type="number" 
                     value={calcState.rate || ''}
                     placeholder="مثلاً 55" 
-                    onChange={(e:any) => handleCalc('RATE', Number(e.target.value))}
+                    onChange={(e:any) => handleRateChange(Number(e.target.value))}
                   />
                   <p className="col-span-2 text-[10px] text-center text-slate-500 dir-ltr font-mono">
                      Formula: {calcState.currency === 'SDG' 
@@ -375,7 +403,9 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
                   </p>
                </div>
              )}
+
              {(modal.payMethod === 'أخرى' || modal.paymentMethod === 'أخرى') && <Input label="تفاصيل الدفع الأخرى" name="opm" defaultValue={modal.otherPaymentMethod} required />}
+             
              <textarea name="desc" placeholder="تفاصيل الفستان والملاحظات..." defaultValue={modal.description} className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold min-h-[100px]" />
              <Button className="w-full mt-4 !rounded-2xl">حفظ الطلب</Button>
            </form>
@@ -385,8 +415,13 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
       {modal?.type === 'VALIDATION_WARNING' && (
         <Modal title="تنبيه هام" onClose={() => setModal(null)}>
             <div className="text-center space-y-6">
-               <div className="w-20 h-20 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 border border-orange-500/20"><AlertTriangle size={40} /></div>
-               <div><h3 className="font-black text-white text-xl">{modal.msg}</h3><p className="text-sm text-slate-400 mt-2">يرجى مراجعة البيانات المدخلة.</p></div>
+               <div className="w-20 h-20 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto text-orange-500 border border-orange-500/20">
+                   <AlertTriangle size={40} />
+               </div>
+               <div>
+                   <h3 className="font-black text-white text-xl">{modal.msg}</h3>
+                   <p className="text-sm text-slate-400 mt-2">يرجى مراجعة البيانات المدخلة.</p>
+               </div>
                <Button onClick={() => setModal({ ...pendingSave, type: pendingSave.isEdit ? 'EDIT' : 'ADD' })} className="w-full">تعديل البيانات</Button>
             </div>
         </Modal>
@@ -424,8 +459,17 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
         </Modal>
       )}
 
+      {/* PRINT PREVIEW MODAL */}
       {printModalData && (
-          <PrintPreviewModal data={printModalData} mode={printModalMode} onClose={() => setPrintModalData(null)} onPrint={(imageSrc) => { onPrint(imageSrc); setPrintModalData(null); }} />
+          <PrintPreviewModal 
+            data={printModalData} 
+            mode={printModalMode} 
+            onClose={() => setPrintModalData(null)}
+            onPrint={(imageSrc) => {
+                onPrint(imageSrc); 
+                setPrintModalData(null); 
+            }}
+          />
       )}
     </div>
   );

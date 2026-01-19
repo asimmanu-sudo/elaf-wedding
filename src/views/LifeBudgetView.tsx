@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  Wallet, TrendingUp, PieChart, Target, ShoppingCart, RefreshCw, Settings, Save, Users, Trash2, Lock, Percent, Calculator, Plus
+  Wallet, TrendingUp, PieChart, Target, ShoppingCart, Settings, Save, Users, Trash2, Lock, Percent, Calculator, Plus, AlertCircle
 } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { Card, Button, Input, Modal, ConfirmModal } from '../components/UI';
@@ -130,15 +130,6 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
       if (t.type === 'EXPENSE') {
           bals[curr as keyof typeof bals] -= amt;
       }
-      if (t.type === 'EXCHANGE') {
-        // Source currency deduction
-        bals[curr as keyof typeof bals] -= amt;
-        // Target currency addition (Exchange logic is simpler here, usually EGP out -> USD in or vice versa)
-        if (t.toCurrency && t.exchangeRate) {
-             const targetAmt = amt * t.exchangeRate; // Simplified for internal transfers if needed
-             bals[t.toCurrency as keyof typeof bals] += targetAmt;
-        }
-      }
     });
     return bals;
   }, [transactions]);
@@ -198,37 +189,59 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
       e.preventDefault();
       const fd = new FormData(e.currentTarget);
       
-      const data: any = {
-          docType: 'TRANSACTION',
-          type: modal.txType,
-          date: fd.get('date') || today,
-          category: fd.get('category'),
-          beneficiary: fd.get('beneficiary') || null,
-          description: fd.get('desc')
-      };
+      const date = fd.get('date') || today;
+      const category = fd.get('category');
+      const beneficiary = fd.get('beneficiary') || null;
+      const description = fd.get('desc');
+      
+      // Determine values
+      let amount = 0;
+      let currency = 'EGP';
+      let currencyAmount = 0;
+      let exchangeRate = 1;
 
-      if (modal.txType === 'EXPENSE' || modal.txType === 'INCOME') {
-          // If Multi-Currency Logic is active
-          if (expCalc.currency !== 'EGP') {
-              data.amount = expCalc.egpAmount; // Bookkeeping in EGP
-              data.currency = expCalc.currency; // Actual wallet currency
-              data.currencyAmount = expCalc.foreignAmount; // Actual wallet deduction
-              data.exchangeRate = expCalc.rate;
-          } else {
-              data.amount = Number(fd.get('amount'));
-              data.currency = 'EGP';
-              data.currencyAmount = data.amount;
-              data.exchangeRate = 1;
-          }
-      } else if (modal.txType === 'EXCHANGE') {
-        data.amount = Number(fd.get('amount')); // Source Amount
-        data.currency = fd.get('currency');
-        data.toCurrency = fd.get('toCurrency');
-        data.exchangeRate = Number(fd.get('rate'));
-        data.description = `تحويل عملة`;
+      if (expCalc.currency !== 'EGP') {
+          amount = expCalc.egpAmount; // Bookkeeping in EGP
+          currency = expCalc.currency; // Actual wallet currency
+          currencyAmount = expCalc.foreignAmount; // Actual wallet deduction
+          exchangeRate = expCalc.rate;
+      } else {
+          amount = Number(fd.get('amount'));
+          currency = 'EGP';
+          currencyAmount = amount;
+          exchangeRate = 1;
       }
 
-      await cloudDb.add(COLLS.PERSONAL, data);
+      // SPECIAL LOGIC: SDG Expenses
+      // If Expense is in SDG, it comes from the SHOP WALLET (Finance), not Personal Wallet.
+      if (modal.txType === 'EXPENSE' && currency === 'SDG') {
+          await cloudDb.add(COLLS.FINANCE, {
+              type: 'EXPENSE',
+              date,
+              category: 'مصاريف منزل (SDG)',
+              amount, // EGP equivalent for reporting
+              currency: 'SDG',
+              currencyAmount, // Actual SDG deducted
+              exchangeRate,
+              notes: `مصروف بيت: ${category} ${beneficiary ? `(${beneficiary})` : ''} - ${description || ''}`
+          });
+          alert('تم خصم المصروف من رصيد المحل (السوداني)');
+      } else {
+          // Standard Logic: Add to Personal Budget
+          await cloudDb.add(COLLS.PERSONAL, {
+              docType: 'TRANSACTION',
+              type: modal.txType,
+              date,
+              category,
+              beneficiary,
+              description,
+              amount,
+              currency,
+              currencyAmount,
+              exchangeRate
+          });
+      }
+
       setModal(null);
       setExpCalc({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
   };
@@ -262,11 +275,11 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
 
   return (
     <div className="space-y-6 animate-fade-in pb-24">
-       {/* Wallet Summary */}
-       <div className="grid grid-cols-3 gap-3">
-         {CURRENCIES.map(c => (
+       {/* Wallet Summary (Hide SDG) */}
+       <div className="grid grid-cols-2 gap-3">
+         {CURRENCIES.filter(c => c.code !== 'SDG').map(c => (
            <div key={c.code} className="bg-slate-900 border border-white/5 p-4 rounded-3xl relative overflow-hidden">
-              <div className={`absolute top-0 left-0 w-full h-1 ${c.code === 'EGP' ? 'bg-brand-500' : c.code === 'SDG' ? 'bg-blue-500' : 'bg-emerald-500'}`}></div>
+              <div className={`absolute top-0 left-0 w-full h-1 ${c.code === 'EGP' ? 'bg-brand-500' : 'bg-emerald-500'}`}></div>
               <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{c.code}</p>
               <p className="text-xl font-black text-white mt-1" dir="ltr">
                  {new Intl.NumberFormat('en-US').format(wallets[c.code as keyof typeof wallets])}
@@ -290,10 +303,9 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
        </div>
 
        {/* Quick Actions */}
-       <div className="flex gap-2 overflow-x-auto custom-scrollbar">
-          <Button onClick={() => { setModal({ type: 'TX_FORM', txType: 'EXPENSE' }); setExpCalc({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 }); }} className="flex-1 min-w-[100px] !h-12 !text-xs !rounded-xl bg-red-500/10 text-red-400 border-red-500/20"><ShoppingCart size={16}/> مصروف</Button>
-          <Button onClick={() => { setModal({ type: 'TX_FORM', txType: 'INCOME' }); setExpCalc({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 }); }} className="flex-1 min-w-[100px] !h-12 !text-xs !rounded-xl bg-emerald-500/10 text-emerald-400 border-emerald-500/20"><TrendingUp size={16}/> دخل</Button>
-          <Button onClick={() => setModal({ type: 'TX_FORM', txType: 'EXCHANGE' })} className="flex-1 min-w-[100px] !h-12 !text-xs !rounded-xl bg-blue-500/10 text-blue-400 border-blue-500/20"><RefreshCw size={16}/> تحويل</Button>
+       <div className="flex gap-2">
+          <Button onClick={() => { setModal({ type: 'TX_FORM', txType: 'EXPENSE' }); setExpCalc({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 }); }} className="flex-1 !h-12 !text-xs !rounded-xl bg-red-500/10 text-red-400 border-red-500/20"><ShoppingCart size={16}/> مصروف</Button>
+          <Button onClick={() => { setModal({ type: 'TX_FORM', txType: 'INCOME' }); setExpCalc({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 }); }} className="flex-1 !h-12 !text-xs !rounded-xl bg-emerald-500/10 text-emerald-400 border-emerald-500/20"><TrendingUp size={16}/> دخل</Button>
        </div>
 
        {/* Tabs */}
@@ -482,30 +494,33 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
 
       {/* ADD TRANSACTION MODAL */}
       {modal?.type === 'TX_FORM' && (
-        <Modal title={modal.txType === 'INCOME' ? 'تسجيل دخل' : modal.txType === 'EXPENSE' ? 'تسجيل مصروف' : 'تحويل عملة'} onClose={() => setModal(null)}>
+        <Modal title={modal.txType === 'INCOME' ? 'تسجيل دخل' : 'تسجيل مصروف'} onClose={() => setModal(null)}>
            <form onSubmit={handleAddTx} className="space-y-4">
               
               {/* Currency Selection for Expense/Income */}
-              {(modal.txType === 'EXPENSE' || modal.txType === 'INCOME') && (
-                  <div className="bg-slate-950 p-3 rounded-2xl border border-white/5">
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2 px-2">عملة العملية</label>
-                      <div className="flex gap-2">
-                          {CURRENCIES.map(c => (
-                              <button 
-                                  key={c.code} 
-                                  type="button" 
-                                  onClick={() => handleExpCurrencyChange(c.code)}
-                                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${expCalc.currency === c.code ? 'bg-brand-500 text-white' : 'bg-slate-900 text-slate-500'}`}
-                              >
-                                  {c.code}
-                              </button>
-                          ))}
-                      </div>
+              <div className="bg-slate-950 p-3 rounded-2xl border border-white/5">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2 px-2">عملة العملية</label>
+                  <div className="flex gap-2">
+                      {CURRENCIES.map(c => (
+                          <button 
+                              key={c.code} 
+                              type="button" 
+                              onClick={() => handleExpCurrencyChange(c.code)}
+                              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${expCalc.currency === c.code ? 'bg-brand-500 text-white' : 'bg-slate-900 text-slate-500'}`}
+                          >
+                              {c.code}
+                          </button>
+                      ))}
                   </div>
-              )}
+                  {modal.txType === 'EXPENSE' && expCalc.currency === 'SDG' && (
+                      <p className="text-[10px] text-yellow-500 font-bold mt-2 px-2 flex items-center gap-2">
+                          <AlertCircle size={12} /> سيتم خصم هذا المبلغ من رصيد "المحل" وليس من ميزانية البيت.
+                      </p>
+                  )}
+              </div>
 
               {/* Amount Inputs */}
-              {(modal.txType === 'EXPENSE' || modal.txType === 'INCOME') && expCalc.currency !== 'EGP' ? (
+              {expCalc.currency !== 'EGP' ? (
                   <div className="p-4 bg-brand-500/5 border border-brand-500/20 rounded-2xl animate-slide-up grid grid-cols-2 gap-4">
                       <div className="col-span-2 flex items-center gap-2 text-brand-400 mb-1">
                           <Calculator size={16}/> <span className="text-xs font-bold">حاسبة العملة ({expCalc.currency})</span>
@@ -526,61 +541,35 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
                         onChange={(e:any) => handleExpRateChange(Number(e.target.value))}
                       />
                       <div className="col-span-2 text-center">
-                          <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">القيمة المعادلة بالمصري (للخصم من الميزانية)</p>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">القيمة المعادلة بالمصري</p>
                           <p className="text-xl font-black text-white">{formatCurrency(expCalc.egpAmount)} EGP</p>
                       </div>
                   </div>
-              ) : (modal.txType === 'EXPENSE' || modal.txType === 'INCOME') ? (
+              ) : (
                   <Input label="المبلغ (EGP)" name="amount" type="number" required />
-              ) : null}
-
-              
-              {/* Exchange Mode Inputs */}
-              {modal.txType === 'EXCHANGE' && (
-                 <>
-                   <div className="grid grid-cols-2 gap-4">
-                        <Input label="المبلغ المراد تحويله" name="amount" type="number" required />
-                        <div className="space-y-2">
-                            <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">من عملة</label>
-                            <select name="currency" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none" required>
-                                {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-                            </select>
-                        </div>
-                   </div>
-                   <div className="space-y-2">
-                      <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">إلى عملة</label>
-                      <select name="toCurrency" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none" required>
-                         {CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-                      </select>
-                   </div>
-                   <Input label="سعر التحويل (Rate)" name="rate" type="number" step="0.01" placeholder="مثلاً 50.5" required />
-                 </>
               )}
 
-              {(modal.txType === 'EXPENSE' || modal.txType === 'INCOME') && (
-                 <>
-                    <div className="space-y-2">
-                        <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">البند / التصنيف</label>
-                        {modal.txType === 'EXPENSE' ? (
-                        <select name="category" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none" required>
-                            <option value="">-- اختر --</option>
-                            {(config.budgetPlan || []).map((p:any) => <option key={p.category} value={p.category}>{p.category}</option>)}
-                            <option value="أخرى">أخرى</option>
-                        </select>
-                        ) : (
-                        <Input name="category" placeholder="مصدر الدخل" required />
-                        )}
-                    </div>
-                    {modal.txType === 'EXPENSE' && (
-                        <div className="space-y-2">
-                            <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">المستفيد (من قام بالصرف)</label>
-                            <select name="beneficiary" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none">
-                                <option value="">-- عام للبيت --</option>
-                                {(config.familyMembers || []).map((m:string) => <option key={m} value={m}>{m}</option>)}
-                            </select>
-                        </div>
-                    )}
-                 </>
+              <div className="space-y-2">
+                  <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">البند / التصنيف</label>
+                  {modal.txType === 'EXPENSE' ? (
+                  <select name="category" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none" required>
+                      <option value="">-- اختر --</option>
+                      {(config.budgetPlan || []).map((p:any) => <option key={p.category} value={p.category}>{p.category}</option>)}
+                      <option value="أخرى">أخرى</option>
+                  </select>
+                  ) : (
+                  <Input name="category" placeholder="مصدر الدخل" required />
+                  )}
+              </div>
+              
+              {modal.txType === 'EXPENSE' && (
+                  <div className="space-y-2">
+                      <label className="text-[11px] font-black text-white uppercase px-4 tracking-widest leading-none">المستفيد (من قام بالصرف)</label>
+                      <select name="beneficiary" className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none">
+                          <option value="">-- عام للبيت --</option>
+                          {(config.familyMembers || []).map((m:string) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                  </div>
               )}
 
               <Input label="التاريخ" name="date" type="date" defaultValue={today} />

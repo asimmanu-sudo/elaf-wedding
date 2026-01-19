@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Truck, PackagePlus, MinusCircle, RotateCcw, Printer, Calculator, RefreshCw, AlertTriangle } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
@@ -18,7 +17,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
   const [printModalData, setPrintModalData] = useState<any>(null);
   const [printModalMode, setPrintModalMode] = useState<'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE'>('DEPOSIT');
 
-  // SMART CALCULATION STATE (Unified)
+  // SMART CALCULATION STATE
   const [calcState, setCalcState] = useState({ 
     currency: 'EGP', 
     egpAmount: 0, 
@@ -53,7 +52,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const item = modal.item;
-    const paidNow = calcState.egpAmount; // Use Calculated EGP Value
+    const paidNow = calcState.egpAmount || Number(fd.get('paid_now'));
     const staffName = user?.name || 'Admin';
 
     let currentTotalDebt = 0;
@@ -136,39 +135,52 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
     }
   };
 
-  // --- BIDIRECTIONAL CURRENCY CALCULATION ---
+  // --- SMART CALCULATION LOGIC ---
   const handlePaymentMethodChange = (pm: string) => {
       let curr = 'EGP';
       if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
       else if (pm.includes('دولار') || pm.includes('Western') || pm.includes('USD')) curr = 'USD';
       
-      setCalcState(prev => ({ ...prev, currency: curr }));
+      setCalcState(prev => ({ ...prev, currency: curr, rate: 0, foreignAmount: 0 }));
       setModal((prev:any) => ({...prev, paymentMethod: pm }));
   };
 
-  const handleCalc = (type: 'EGP' | 'FOREIGN' | 'RATE', val: number) => {
+  const handleEgpChange = (val: number) => {
       setCalcState(prev => {
-          const newState = { ...prev };
-          if (type === 'RATE') newState.rate = val;
-          if (type === 'FOREIGN') newState.foreignAmount = val;
-          if (type === 'EGP') newState.egpAmount = val;
-
-          const { currency, rate, foreignAmount, egpAmount } = newState;
-
-          if (type === 'RATE') {
-              if (foreignAmount > 0) {
-                  newState.egpAmount = currency === 'USD' ? foreignAmount * rate : (rate > 0 ? foreignAmount / rate : 0);
-              }
-          } else if (type === 'FOREIGN') {
-              newState.egpAmount = currency === 'USD' ? val * rate : (rate > 0 ? val / rate : 0);
-          } else if (type === 'EGP') {
-              newState.foreignAmount = currency === 'USD' ? (rate > 0 ? val / rate : 0) : val * rate;
+          if (prev.rate === 0) return { ...prev, egpAmount: val };
+          let newForeign = 0;
+          if (prev.currency === 'SDG') {
+              newForeign = val * prev.rate;
+          } else {
+              newForeign = val / prev.rate;
           }
-          
-          newState.egpAmount = parseFloat(Number(newState.egpAmount).toFixed(2));
-          newState.foreignAmount = parseFloat(Number(newState.foreignAmount).toFixed(2));
-          
-          return newState;
+          return { ...prev, egpAmount: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
+      });
+  };
+
+  const handleRateChange = (val: number) => {
+      setCalcState(prev => {
+          let newForeign = 0;
+          if (prev.currency === 'SDG') {
+              newForeign = prev.egpAmount * val;
+          } else {
+              newForeign = val > 0 ? prev.egpAmount / val : 0;
+          }
+          return { ...prev, rate: val, foreignAmount: parseFloat(newForeign.toFixed(2)) };
+      });
+  };
+
+  const handleForeignChange = (val: number) => {
+      setCalcState(prev => {
+          let newRate = 0;
+          if (prev.egpAmount > 0) {
+              if (prev.currency === 'SDG') {
+                  newRate = val / prev.egpAmount;
+              } else {
+                  newRate = val > 0 ? prev.egpAmount / val : 0;
+              }
+          }
+          return { ...prev, foreignAmount: val, rate: parseFloat(newRate.toFixed(4)) };
       });
   };
 
@@ -219,6 +231,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
     }
   };
 
+  // Helper to open print modal
   const openPrintModal = (data: any, mode: 'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE') => {
       setPrintModalData(data);
       setPrintModalMode(mode);
@@ -257,6 +270,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             </div>
             <div className="flex gap-2">
               <Button onClick={() => { setModal({ type: 'DELIVER_FORM', item }); setCalcState({ currency: 'EGP', egpAmount: item.remainingToPay || item.remainingFromBride, foreignAmount: 0, rate: 0 }); }} variant="success" className="flex-1 h-12 text-xs font-bold">تسليم للعروس</Button>
+              {/* Force visible printer button with preview */}
               <button 
                 type="button" 
                 onClick={() => openPrintModal(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')}
@@ -287,6 +301,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
             </div>
             <div className="flex gap-2">
               <Button onClick={() => setModal({ type: 'RETURN_FORM', item })} variant="success" className="flex-1 h-12 text-xs font-bold">استلام من العروس</Button>
+              {/* Force visible undo button */}
               <button 
                 onClick={() => undoDelivery(item)}
                 className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-red-400 border border-white/10 transition-colors"
@@ -294,6 +309,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
               >
                 <RotateCcw size={20} />
               </button>
+              {/* Force visible print button with preview */}
               <button 
                 onClick={() => openPrintModal(item, 'RECEIPT')}
                 className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 hover:bg-white/10 text-sky-400 border border-white/10 transition-colors"
@@ -311,6 +327,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
               <h4 className="font-black text-white">{item.customerName || item.brideName}</h4>
               <div className="flex items-center gap-2">
                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${item.type === 'SALE' ? 'bg-orange-500/10 text-orange-400' : 'bg-brand-500/10 text-brand-400'}`}>{item.type === 'SALE' ? 'تفصيل' : 'إيجار'}</span>
+                 {/* Compact visible printer button with preview */}
                  <button 
                     onClick={() => openPrintModal(item, item.type === 'SALE' ? 'DEPOSIT' : 'RECEIPT')}
                     className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 text-sky-400 border border-white/10 transition-colors"
@@ -349,6 +366,8 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
 
       {modal?.type === 'DELIVER_FORM' && (
         <Modal title={`إتمام تسليم: ${modal.item.customerName || modal.item.brideName}`} onClose={() => { setModal(null); setExtras([]); setCalcState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 }); }}>
+          {/* ... Form ... */}
+          {/* (No internal changes to form logic needed) */}
           <form onSubmit={handleDeliverConfirm} className="space-y-6">
             <div className="bg-slate-950 border border-white/5 p-4 rounded-2xl mb-4 text-center">
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">إجمالي المبلغ المستحق على العروس</p>
@@ -363,9 +382,9 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
                   label="المبلغ المدفوع الآن بالمصري (EGP)" 
                   name="paid_now" 
                   type="number" 
-                  value={calcState.egpAmount || ''} 
+                  defaultValue={calcState.egpAmount} 
                   required 
-                  onChange={(e:any) => handleCalc('EGP', Number(e.target.value))}
+                  onChange={(e:any) => handleEgpChange(Number(e.target.value))}
                />
                <select name="pm" className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-white font-bold outline-none mt-2" onChange={(e:any)=>handlePaymentMethodChange(e.target.value)}>
                   <option value="كاش (جنية مصري)">دفع نقدي (مصري)</option>
@@ -384,7 +403,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
                       label={`المبلغ بالـ ${calcState.currency}`} 
                       type="number" 
                       value={calcState.foreignAmount || ''}
-                      onChange={(e:any) => handleCalc('FOREIGN', Number(e.target.value))} 
+                      onChange={(e:any) => handleForeignChange(Number(e.target.value))} 
                       placeholder="0.00" 
                     />
                     <Input 
@@ -392,7 +411,7 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
                       type="number" 
                       value={calcState.rate || ''}
                       placeholder="مثلاً 55" 
-                      onChange={(e:any) => handleCalc('RATE', Number(e.target.value))}
+                      onChange={(e:any) => handleRateChange(Number(e.target.value))}
                     />
                     <p className="col-span-2 text-[10px] text-center text-slate-500 dir-ltr font-mono">
                        Formula: {calcState.currency === 'SDG' 
@@ -499,8 +518,17 @@ export default function DeliveryView({ bookings, sales, query, user, showToast, 
         </Modal>
       )}
 
+      {/* PRINT PREVIEW MODAL */}
       {printModalData && (
-          <PrintPreviewModal data={printModalData} mode={printModalMode} onClose={() => setPrintModalData(null)} onPrint={(imageSrc) => { onPrint(imageSrc); setPrintModalData(null); }} />
+          <PrintPreviewModal 
+            data={printModalData} 
+            mode={printModalMode} 
+            onClose={() => setPrintModalData(null)}
+            onPrint={(imageSrc) => {
+                onPrint(imageSrc); // Call global print logic
+                setPrintModalData(null); // Close modal
+            }}
+          />
       )}
     </div>
   );

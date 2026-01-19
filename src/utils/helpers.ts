@@ -8,6 +8,7 @@ export const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
 export const DEFAULT_WA_TEMPLATES = {
   booking_confirm: `أهلاً عروستنا الجميلة {Name} 👰🏻‍♀️،\nتم تأكيد حجزك لفستان ({Dress}) ليوم ({EventDate}).\n\nمواعيد البروفات المبدئية:\n- الأولى: {Fitting1}\n- الثانية: {Fitting2}\n(المواعيد قابلة للتنسيق).\n\nتم استلام عربون: {Deposit}.\nمتحمسين نكون جزء من يومك المميز! ✨\n- أتيليه إيلاف`,
+  sale_confirm: `أهلاً بك مدام {Name} 🌹\nتم تسجيل طلب التفصيل/البيع للموديل: ({Dress}).\n\nتم رفع المقاسات واعتماد التفاصيل.\nموعد الاستلام المتوقع: {DeliveryDate}.\n\nتم استلام دفعة مقدمة: {Deposit}.\nشكراً لثقتك في إيلاف! ✨`,
   pickup_ready: `يا أجمل عروسة {Name} 👑!\nفستانك ({Dress}) جاهز ومكوي وبيستناكي عشان تنوريه.\n\nمتبقي للدفع: {Remaining}.\nمنتظرينك في المعرض للاستلام. ألف مبروك مقدماً! 💍`,
   return_thanks: `نورتينا يا {Name}! 💖\nشكراً لتعاملك الراقي مع أتيليه إيلاف.\nنتمنى نكون كنا عند حسن ظنك، وألف مبروك مرة تانية وربنا يسعدك!`,
   payment_reminder: `مرحباً مدام {Name}،\nنتمنى أن تكوني بخير.\nتذكير بموعد البروفة القادم أو سداد دفعة مستحقة لفستان ({Dress}).\nيرجى التواصل معنا للتأكيد.\nشكراً لك!`
@@ -15,7 +16,7 @@ export const DEFAULT_WA_TEMPLATES = {
 
 const WA_FOOTER = `\n\n--------\nتنبيه: هذه رسالة تلقائية تم إنشاؤها عبر نظام إيلاف للإدارة الإلكترونية، وليست رسالة شخصية.`;
 
-export type WATemplateKey = 'BOOKING_CONFIRM' | 'PICKUP_READY' | 'RETURN_THANKS' | 'PAYMENT_REMINDER';
+export type WATemplateKey = 'BOOKING_CONFIRM' | 'SALE_CONFIRM' | 'PICKUP_READY' | 'RETURN_THANKS' | 'PAYMENT_REMINDER';
 
 export const getWhatsAppLink = (phone: string, key: WATemplateKey, data: Record<string, any>, customTemplates?: any) => {
   let template = '';
@@ -24,6 +25,9 @@ export const getWhatsAppLink = (phone: string, key: WATemplateKey, data: Record<
   switch (key) {
     case 'BOOKING_CONFIRM':
       template = temps.booking_confirm || DEFAULT_WA_TEMPLATES.booking_confirm;
+      break;
+    case 'SALE_CONFIRM':
+      template = temps.sale_confirm || DEFAULT_WA_TEMPLATES.sale_confirm;
       break;
     case 'PICKUP_READY':
       template = temps.pickup_ready || DEFAULT_WA_TEMPLATES.pickup_ready;
@@ -41,7 +45,7 @@ export const getWhatsAppLink = (phone: string, key: WATemplateKey, data: Record<
     .replace(/{Name}/g, (data.Name || '').split(' ')[0])
     .replace(/{Dress}/g, data.Dress || '')
     .replace(/{EventDate}/g, data.EventDate || '---')
-    .replace(/{DeliveryDate}/g, data.DeliveryDate || '---')
+    .replace(/{DeliveryDate}/g, data.DeliveryDate || 'سيتم التحديد')
     .replace(/{Fitting1}/g, data.Fitting1 || 'سيتم تحديدها لاحقاً')
     .replace(/{Fitting2}/g, data.Fitting2 || 'سيتم تحديدها لاحقاً')
     .replace(/{Deposit}/g, data.Deposit ? formatCurrency(data.Deposit) : '0')
