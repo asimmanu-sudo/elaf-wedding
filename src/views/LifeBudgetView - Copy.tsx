@@ -22,7 +22,7 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
       budgetPlan: [] 
   });
 
-  // State for Multi-Currency Expense Calculation (Only for Input)
+  // State for Multi-Currency Expense Calculation
   const [expCalc, setExpCalc] = useState({ currency: 'EGP', egpAmount: 0, foreignAmount: 0, rate: 0 });
 
   // State for New Jar
@@ -42,7 +42,7 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
     return () => unsub();
   }, []);
 
-  // --- VAULT CALCULATION (Business Liability) ---
+  // --- VAULT CALCULATION (From Finance View) ---
   const vaultStatus = useMemo(() => {
       if(!bookings || !sales) return { totalLocked: 0, lockedRent: 0, lockedSale: 0 };
 
@@ -52,6 +52,7 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
       let lockedRent = 0;
       let lockedSale = 0;
 
+      // Rent Logic
       const activeBookings = bookings.filter((b: any) => b.status === BookingStatus.PENDING || b.status === BookingStatus.ACTIVE);
       activeBookings.forEach((b: any) => {
           const staffFee = (b.rentalPrice || 0) * staffRatio;
@@ -61,6 +62,7 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
           lockedRent += lockedForBooking;
       });
 
+      // Sale Logic
       const activeSales = sales.filter((s: any) => s.status !== SaleStatus.DELIVERED && s.status !== SaleStatus.CANCELLED);
       activeSales.forEach((s: any) => {
           const remainingFactoryDebt = (s.factoryPrice || 0) - (s.factoryDepositPaid || 0);
@@ -78,12 +80,14 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
 
   // --- CALCULATION LOGIC ---
   const jars = useMemo(() => {
+      // Income is considered in EGP for Budget Allocation
       const totalIncome = transactions
         .filter(t => t.type === 'INCOME')
         .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
       return (config.budgetPlan || []).map((plan: any) => {
           const allocated = totalIncome * ((Number(plan.percentage) || 0) / 100);
+          // Expenses are deducted based on their EGP equivalent (amount field)
           const spent = transactions
             .filter(t => t.type === 'EXPENSE' && t.category === plan.category)
             .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -105,19 +109,19 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
 
       transactions.filter(t => t.type === 'EXPENSE').forEach(t => {
           const member = t.beneficiary || 'Unassigned';
+          // Use EGP amount for stats
           stats[member] = (stats[member] || 0) + (Number(t.amount) || 0);
       });
 
       return Object.entries(stats).map(([name, value]) => ({ name, value })).filter((x:any) => x.value > 0);
   }, [transactions, config]);
 
-  // --- WALLETS (Only EGP & USD for Home) ---
   const wallets = useMemo(() => {
-    const bals = { EGP: 0, USD: 0 };
+    const bals = { EGP: 0, SDG: 0, USD: 0 };
     transactions.forEach((t: any) => {
+      // Use the actual currency recorded
       const curr = t.currency || 'EGP';
-      if (curr === 'SDG') return; // Ignore SDG transactions here
-      
+      // Use foreign amount if available, otherwise EGP amount
       const amt = t.currencyAmount || t.amount || 0; 
 
       if (t.type === 'INCOME') {
@@ -190,6 +194,7 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
       const beneficiary = fd.get('beneficiary') || null;
       const description = fd.get('desc');
       
+      // Determine values
       let amount = 0;
       let currency = 'EGP';
       let currencyAmount = 0;
@@ -207,7 +212,8 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
           exchangeRate = 1;
       }
 
-      // SPECIAL LOGIC: SDG Expenses -> DEDUCT FROM BUSINESS WALLET
+      // SPECIAL LOGIC: SDG Expenses
+      // If Expense is in SDG, it comes from the SHOP WALLET (Finance), not Personal Wallet.
       if (modal.txType === 'EXPENSE' && currency === 'SDG') {
           await cloudDb.add(COLLS.FINANCE, {
               type: 'EXPENSE',
@@ -217,7 +223,7 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
               currency: 'SDG',
               currencyAmount, // Actual SDG deducted
               exchangeRate,
-              notes: `مصروف بيت من رصيد المحل: ${category} ${beneficiary ? `(${beneficiary})` : ''} - ${description || ''}`
+              notes: `مصروف بيت: ${category} ${beneficiary ? `(${beneficiary})` : ''} - ${description || ''}`
           });
           alert('تم خصم المصروف من رصيد المحل (السوداني)');
       } else {
@@ -269,14 +275,14 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
 
   return (
     <div className="space-y-6 animate-fade-in pb-24">
-       {/* Wallet Summary (Hide SDG - Personal only) */}
+       {/* Wallet Summary (Hide SDG) */}
        <div className="grid grid-cols-2 gap-3">
-         {['EGP', 'USD'].map(c => (
-           <div key={c} className="bg-slate-900 border border-white/5 p-4 rounded-3xl relative overflow-hidden">
-              <div className={`absolute top-0 left-0 w-full h-1 ${c === 'EGP' ? 'bg-brand-500' : 'bg-emerald-500'}`}></div>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{c}</p>
+         {CURRENCIES.filter(c => c.code !== 'SDG').map(c => (
+           <div key={c.code} className="bg-slate-900 border border-white/5 p-4 rounded-3xl relative overflow-hidden">
+              <div className={`absolute top-0 left-0 w-full h-1 ${c.code === 'EGP' ? 'bg-brand-500' : 'bg-emerald-500'}`}></div>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{c.code}</p>
               <p className="text-xl font-black text-white mt-1" dir="ltr">
-                 {new Intl.NumberFormat('en-US').format(wallets[c as keyof typeof wallets])}
+                 {new Intl.NumberFormat('en-US').format(wallets[c.code as keyof typeof wallets])}
               </p>
            </div>
          ))}
@@ -311,7 +317,7 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
         ))}
       </div>
 
-      {/* JARS TAB */}
+      {/* JARS TAB - Improved Grid for Mobile */}
       {tab === 'jars' && (
           <div className="grid grid-cols-2 gap-3">
               {jars.map((jar: any) => {
@@ -383,7 +389,7 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
           </div>
       )}
 
-      {/* SETTINGS TAB */}
+      {/* SETTINGS TAB (Centralized) */}
       {tab === 'settings' && (
           <form onSubmit={handleSaveSettings} className="space-y-8">
               <Card>
@@ -491,7 +497,7 @@ export default function LifeBudgetView({ query, bookings, sales }: any) {
         <Modal title={modal.txType === 'INCOME' ? 'تسجيل دخل' : 'تسجيل مصروف'} onClose={() => setModal(null)}>
            <form onSubmit={handleAddTx} className="space-y-4">
               
-              {/* Currency Selection */}
+              {/* Currency Selection for Expense/Income */}
               <div className="bg-slate-950 p-3 rounded-2xl border border-white/5">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2 px-2">عملة العملية</label>
                   <div className="flex gap-2">

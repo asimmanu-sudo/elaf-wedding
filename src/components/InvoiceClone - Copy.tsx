@@ -31,7 +31,7 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
   const total = formatCurrency(totalVal);
   
   const payMethod = data.paymentMethod === 'أخرى' ? data.otherPaymentMethod : data.paymentMethod;
-  const isTailoring = !!data.factoryCode; // Identifies if this is a Sale/Tailoring order
+  const isTailoring = !!data.factoryCode;
 
   // --- Terms & Conditions Logic ---
   const RENT_TERMS = [
@@ -75,6 +75,7 @@ const InvoiceClone: React.FC<InvoiceCloneProps> = ({ data, mode = 'DEPOSIT', sig
   const Header = ({ title, subtitle }: { title?: string, subtitle?: string }) => (
     <div className="flex justify-between items-start mb-8 shrink-0 border-b-2 border-[#B59410]/20 pb-4">
       <div className="flex flex-col justify-center">
+        {/* IMPORTANT: crossOrigin="anonymous" is critical for html-to-image CORS */}
         <img src="/Logo.png" alt="Logo" className="w-32 object-contain mb-2" crossOrigin="anonymous" />
         <p className="text-[9px] font-black text-[#B59410] tracking-[0.25em] uppercase">ELAF WEDDING DRESSES</p>
       </div>

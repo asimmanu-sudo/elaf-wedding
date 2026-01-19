@@ -38,7 +38,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
     }).sort((a: any, b: any) => a.name.localeCompare(b.name, 'ar'));
   }, [dresses, subTab, query, filters]);
 
-  // --- BIDIRECTIONAL CURRENCY CALCULATION ---
+  // --- BIDIRECTIONAL CURRENCY LOGIC ---
   const handlePaymentMethodChange = (pm: string) => {
       let curr = 'EGP';
       if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
@@ -56,6 +56,7 @@ export default function RentDressesView({ dresses, bookings, query, hasPerm, sho
 
           const { currency, rate, foreignAmount, egpAmount } = newState;
 
+          // LOGIC: USD (*) | SDG (/)
           if (type === 'RATE') {
               if (foreignAmount > 0) {
                   newState.egpAmount = currency === 'USD' ? foreignAmount * rate : (rate > 0 ? foreignAmount / rate : 0);

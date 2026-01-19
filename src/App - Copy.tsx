@@ -1,4 +1,5 @@
 
+// src/App.tsx
 import React, { useState, useEffect } from 'react';
 import { Search, LogOut, CheckCircle, AlertTriangle, RefreshCw, Save } from 'lucide-react';
 import { cloudDb, COLLS } from './services/firebase';
@@ -100,15 +101,13 @@ function AppContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [toasts, setToasts] = useState<any[]>([]);
   
-  // --- NATIVE PRINT STATE ---
+  // --- Printing State (Native Solution) ---
   const [printingItem, setPrintingItem] = useState<any>(null);
-  const [printMode, setPrintMode] = useState<'DEPOSIT' | 'RECEIPT' | 'SIZES' | 'SCHEDULE'>('DEPOSIT');
+  const [printMode, setPrintMode] = useState<any>('DEPOSIT');
 
   // Theme & Data
   const [theme, setTheme] = useState(localStorage.getItem('app_theme') || 'default');
   const [isBackupNeeded, setIsBackupNeeded] = useState(false);
-  
-  // Data States
   const [dresses, setDresses] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [sales, setSales] = useState([]);
@@ -145,21 +144,24 @@ function AppContent() {
     if (user) cloudDb.add(COLLS.LOGS, { action, username: user.name, timestamp: new Date().toISOString(), details });
   };
 
-  const hasPerm = (p: string) => user?.role === UserRole.ADMIN || user?.permissions.includes(p);
-  const themeStyles = THEMES[theme] || THEMES['default'];
-
-  // --- NATIVE PRINT HANDLER (Simple & Robust) ---
-  const handlePrint = (item: any, mode: any) => {
+  // --- NATIVE PRINT HANDLER ---
+  const handlePrint = (item: any, mode: string) => {
+    // 1. Set data to render in the hidden print area
     setPrintingItem(item);
     setPrintMode(mode);
     
-    // Allow react to render the invoice in the DOM
+    // 2. Wait for React to render the invoice in the DOM
     setTimeout(() => {
-      window.print();
-      // Cleanup after print dialog opens (browser pauses JS)
-      setTimeout(() => setPrintingItem(null), 500); 
+        // 3. Trigger browser print dialog
+        window.print();
+        
+        // 4. Cleanup after a reasonable delay (allowing print dialog interaction)
+        setTimeout(() => setPrintingItem(null), 500);
     }, 500);
   };
+
+  const hasPerm = (p: string) => user?.role === UserRole.ADMIN || user?.permissions.includes(p);
+  const themeStyles = THEMES[theme] || THEMES['default'];
 
   // Auth Screen
   if (!user) {
@@ -192,24 +194,41 @@ function AppContent() {
 
   return (
     <>
-      {/* 1. PRINT STYLES - CRITICAL FIX */}
       <style>{`
-        #printable-area { display: none; }
+        /* Normal State: Print Area Hidden */
+        #printable-area {
+          display: none;
+        }
+
         @media print {
-          .app-container, .toasts-container, header, nav, .no-print { display: none !important; }
-          html, body { height: auto !important; overflow: visible !important; background: white !important; margin: 0 !important; }
-          #printable-area { 
-            display: block !important; 
-            position: absolute !important; 
-            top: 0 !important; 
-            left: 0 !important; 
-            width: 100% !important; 
-            z-index: 9999 !important; 
+          /* 1. Hide everything in the web app */
+          .app-container, .toasts-container, header, nav, .no-print {
+            display: none !important;
+          }
+
+          /* 2. Setup page for printing */
+          html, body {
+            height: auto !important;
+            overflow: visible !important;
+            background-color: white !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+
+          /* 3. Show and position print area */
+          #printable-area {
+            display: block !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            z-index: 9999 !important;
           }
         }
       `}</style>
       
-      {/* 2. MAIN APP CONTAINER */}
+      {/* MAIN APP CONTAINER */}
       <div className="h-full flex flex-col text-slate-100 overflow-hidden no-print app-container" dir="rtl" style={themeStyles as React.CSSProperties}>
         {/* Backup Banner */}
         {user.role === UserRole.ADMIN && isBackupNeeded && (
@@ -268,13 +287,13 @@ function AppContent() {
         </div>
       </div>
 
-      {/* 3. PRINTABLE AREA (Sibling to App, clean DOM) */}
+      {/* PRINTABLE AREA (Standard DOM - Sibling to App Container) */}
       <div id="printable-area" dir="rtl">
          {printingItem && (
             <InvoiceClone 
               data={printingItem} 
               mode={printMode} 
-              signatureImg={null} 
+              signatureImg={null} // Ensure clean print for manual signing
             />
          )}
       </div>

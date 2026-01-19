@@ -39,7 +39,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
   // --- Print Handlers ---
 
   const handleFinalPrint = () => {
-    // Simply delegate to parent for native printing
+    // Simply delegate to parent for native printing and close modal
     onPrint(data, mode);
     onClose();
   };
@@ -49,32 +49,30 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
     setIsProcessing(true);
 
     try {
-      // 1. ضمان حفظ التوقيع إذا وجد
+      // 1. Ensure signature is saved
       if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
           saveSignatureToState();
           await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      // 2. الانتظار قليلاً لضمان رسم الصور
+      // 2. Wait for rendering
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // 3. توليد الصورة بدقة 4K (Ultra High Resolution)
-      // نستخدم أبعاد A4 القياسية (794x1123) ونضربها في 4 للحصول على دقة طباعة ممتازة
+      // 3. Generate High Res Image (Fixed A4 Size)
       const dataUrl = await toPng(invoiceRef.current, {
         quality: 1.0,
-        pixelRatio: 4,      // جودة فائقة (4 أضعاف الدقة القياسية)
+        pixelRatio: 4, 
         cacheBust: true,
-        width: 794,         // عرض A4 ثابت بالبكسل
-        height: 1123,       // ارتفاع A4 ثابت بالبكسل
+        width: 794,
+        height: 1123,
         backgroundColor: '#ffffff',
         style: {
            transform: 'scale(1)',
-           transformOrigin: 'top left',
-           fontSmoothing: 'antialiased' 
+           transformOrigin: 'top left'
         }
       });
 
-      // 4. تحويل ومشاركة الملف
+      // 4. Share Logic
       const res = await fetch(dataUrl);
       const blob = await res.blob();
       const fileName = `invoice_${data.id || Date.now()}.png`;
@@ -87,7 +85,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
           text: `فاتورة ${data.customerName || data.brideName || ''}`
         });
       } else {
-        // Fallback للتحميل المباشر
+        // Fallback for desktop/unsupported browsers
         const link = document.createElement('a');
         link.download = fileName;
         link.href = dataUrl;
@@ -137,7 +135,7 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
          <div className="flex justify-between items-center p-5 border-b border-white/5 bg-slate-900/50">
             <div>
                 <h3 className="text-lg font-black text-white">معاينة وتوقيع</h3>
-                <p className="text-[10px] text-slate-400 font-bold mt-0.5">تأكد من البيانات قبل الطباعة</p>
+                <p className="text-[10px] text-slate-400 font-bold mt-0.5">تأكيد البيانات قبل الطباعة</p>
             </div>
             <button onClick={onClose} className="w-9 h-9 bg-white/5 rounded-full flex items-center justify-center hover:bg-red-500/20 hover:text-red-400 transition-colors">
                 <X size={18} />

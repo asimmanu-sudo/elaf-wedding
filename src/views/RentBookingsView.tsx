@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Printer, Ruler, Edit, Trash2, AlertTriangle, Calculator, RefreshCw, Check, MessageCircle, Send, Calendar as CalendarIcon, List, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Plus, Printer, Ruler, Edit, Trash2, AlertTriangle, Calculator, RefreshCw, Check, MessageCircle, Calendar as CalendarIcon, List, ChevronRight, ChevronLeft } from 'lucide-react';
 import { cloudDb, COLLS } from '../services/firebase';
 import { BookingStatus, DressType, DressStatus } from '../types';
 import { Button, Input, Modal, Card, ConfirmModal } from '../components/UI';
@@ -33,7 +33,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
   const [phoneCode, setPhoneCode] = useState('+20');
   const [localPhone, setLocalPhone] = useState('');
 
-  // SMART CALCULATION STATE (Unified)
+  // SMART CALCULATION STATE (Bidirectional)
   const [calcState, setCalcState] = useState({ 
     currency: 'EGP', 
     egpAmount: 0, 
@@ -201,7 +201,7 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
       setModal(null);
   };
 
-  // --- BIDIRECTIONAL CURRENCY CALCULATION ---
+  // --- BIDIRECTIONAL CURRENCY LOGIC ---
   const handlePaymentMethodChange = (pm: string) => {
       let curr = 'EGP';
       if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
@@ -220,24 +220,17 @@ export default function RentBookingsView({ dresses, bookings, finance, query, ha
 
           const { currency, rate, foreignAmount, egpAmount } = newState;
 
-          // LOGIC:
-          // USD: EGP = Foreign * Rate
-          // SDG: EGP = Foreign / Rate
-
+          // LOGIC: USD (*) | SDG (/)
           if (type === 'RATE') {
-              // If rate changes, recalculate EGP based on Foreign (master)
               if (foreignAmount > 0) {
                   newState.egpAmount = currency === 'USD' ? foreignAmount * rate : (rate > 0 ? foreignAmount / rate : 0);
               }
           } else if (type === 'FOREIGN') {
-              // If foreign changes, calculate EGP
               newState.egpAmount = currency === 'USD' ? val * rate : (rate > 0 ? val / rate : 0);
           } else if (type === 'EGP') {
-              // If EGP changes, calculate Foreign
               newState.foreignAmount = currency === 'USD' ? (rate > 0 ? val / rate : 0) : val * rate;
           }
           
-          // Formatting
           newState.egpAmount = parseFloat(Number(newState.egpAmount).toFixed(2));
           newState.foreignAmount = parseFloat(Number(newState.foreignAmount).toFixed(2));
           

@@ -30,7 +30,7 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
   const [phoneCode, setPhoneCode] = useState('+20');
   const [localPhone, setLocalPhone] = useState('');
 
-  // SMART CALCULATION STATE (Unified)
+  // SMART CALCULATION STATE (Bidirectional)
   const [calcState, setCalcState] = useState({ 
     currency: 'EGP', 
     egpAmount: 0, 
@@ -132,12 +132,13 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
           Deposit: data.deposit,
           Remaining: data.remainingFromBride
       };
+      // SALE_CONFIRM template doesn't use Fitting dates
       const url = getWhatsAppLink(data.bridePhone, templateType, waData, waTemplates);
       window.open(url, '_blank');
       setModal(null);
   };
 
-  // --- BIDIRECTIONAL CURRENCY CALCULATION ---
+  // --- BIDIRECTIONAL CURRENCY LOGIC ---
   const handlePaymentMethodChange = (pm: string) => {
       let curr = 'EGP';
       if (pm.includes('بنكك') || pm.includes('SDG')) curr = 'SDG';
@@ -156,10 +157,7 @@ export default function SaleOrdersView({ sales, finance, query, hasPerm, showToa
 
           const { currency, rate, foreignAmount, egpAmount } = newState;
 
-          // LOGIC:
-          // USD: EGP = Foreign * Rate
-          // SDG: EGP = Foreign / Rate
-
+          // LOGIC: USD (*) | SDG (/)
           if (type === 'RATE') {
               if (foreignAmount > 0) {
                   newState.egpAmount = currency === 'USD' ? foreignAmount * rate : (rate > 0 ? foreignAmount / rate : 0);
