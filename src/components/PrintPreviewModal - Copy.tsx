@@ -49,56 +49,58 @@ export default function PrintPreviewModal({ data, mode, onClose, onPrint }: Prin
     setIsProcessing(true);
 
     try {
-      // 1. ضمان حفظ التوقيع إذا وجد
-      if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
-          saveSignatureToState();
-          await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      // 2. الانتظار قليلاً لضمان رسم الصور
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      // 3. توليد الصورة بدقة 4K (Ultra High Resolution)
-      // نستخدم أبعاد A4 القياسية (794x1123) ونضربها في 4 للحصول على دقة طباعة ممتازة
-      const dataUrl = await toPng(invoiceRef.current, {
-        quality: 1.0,
-        pixelRatio: 4,      // جودة فائقة (4 أضعاف الدقة القياسية)
-        cacheBust: true,
-        width: 794,         // عرض A4 ثابت بالبكسل
-        height: 1123,       // ارتفاع A4 ثابت بالبكسل
-        backgroundColor: '#ffffff',
-        style: {
-           transform: 'scale(1)',
-           transformOrigin: 'top left',
-           fontSmoothing: 'antialiased' 
+        // Ensure signature captured if available
+        if (sigPad.current && !sigPad.current.isEmpty() && !signatureImg) {
+            saveSignatureToState();
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
-      });
+        
+        // Simple delay to ensure DOM is ready
+        await new Promise(resolve => setTimeout(resolve, 500));
 
-      // 4. تحويل ومشاركة الملف
-      const res = await fetch(dataUrl);
-      const blob = await res.blob();
-      const fileName = `invoice_${data.id || Date.now()}.png`;
-      const file = new File([blob], fileName, { type: 'image/png' });
-
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: 'فاتورة إيلاف',
-          text: `فاتورة ${data.customerName || data.brideName || ''}`
+        const dataUrl = await toPng(invoiceRef.current, {
+            quality: 1.0,
+            pixelRatio: 2,
+            cacheBust: true,
+            backgroundColor: '#ffffff'
         });
-      } else {
-        // Fallback للتحميل المباشر
-        const link = document.createElement('a');
-        link.download = fileName;
-        link.href = dataUrl;
-        link.click();
-      }
 
-    } catch (err) {
-      console.error('Share failed:', err);
-      alert('فشلت عملية المشاركة.');
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        const fileName = `invoice_${data.customerName || 'client'}_${Date.now()}.png`;
+        const file = new File([blob], fileName, { type: 'image/png' });
+        
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                title: 'فاتورة إيلاف',
+                text: `فاتورة ${data.customerName || data.brideName}`,
+            });
+        } else {
+            // Fallback: Download and offer WhatsApp Web
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            const phone = data.customerPhone || data.bridePhone;
+            if (phone) {
+                const cleanPhone = phone.replace(/\s+/g, '').replace(/-/g, '').replace('+', '');
+                if (confirm('تم تحميل الصورة. هل تريد فتح واتساب ويب لإرسالها؟')) {
+                    window.open(`https://wa.me/${cleanPhone}`, '_blank');
+                }
+            } else {
+                alert('تم تحميل صورة الفاتورة بنجاح.');
+            }
+        }
+
+    } catch (error) {
+        console.error('Share Error:', error);
+        alert('حدث خطأ أثناء محاولة مشاركة الفاتورة.');
     } finally {
-      setIsProcessing(false);
+        setIsProcessing(false);
     }
   };
 
